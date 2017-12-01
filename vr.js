@@ -1,26 +1,29 @@
 var HEARTBEAT_TIMEOUT = 5000
 var MIN_LATENCY = 1000
 var MAX_LATENCY = 2000
+var VOTE_TIMEOUT = 5000
 var pendingMessages = []
 
 function Message (src, dst, type, content) {
-    this.src = src
-    this.dst = dst
-    this.type = type
-    this.content = content
+	this.src = src
+	this.dst = dst
+	this.type = type
+	this.content = content
 }
 
 var makeMap = function(keys, defaultVal) {
 	newMap = new Map()
-	for (k in keys) {
-		newMap[keys[k]] = defaultVal
-	}
+	keys.forEach(function(k) {
+		newMap.set(k, defaultVal)
+	})
 	return newMap
 }
 
 var sendMessage = function(src, dst, type, content) {
 	console.log(src + " -> " + dst, type)
-	m = new Message(src, dst, type, content)
+
+	contentCopy = Object.assign({}, content)
+	m = new Message(src, dst, type, contentCopy)
 	m.deliverTime = $.now() + MIN_LATENCY + Math.random()*(MAX_LATENCY - MIN_LATENCY)
 	pendingMessages.push(m)
 }
@@ -36,11 +39,12 @@ var deliverMessage = function() {
 	})
 }
 
-var createServer = function(id, groupid, peers) {
+var createServer = function(id, groupid, configuration) {
+	peers = configuration.filter(function(peer) { return peer !== id })
 	return {
 		status: 'active',
 		up_to_date: true,
-		configuration: peers,
+		configuration: configuration,
 		mymid: id,
 		mygroupid: groupid,
 		cur_viewid: [1, id],
@@ -53,7 +57,9 @@ var createServer = function(id, groupid, peers) {
 		inHeartbeats: makeMap(peers, $.now() + HEARTBEAT_TIMEOUT),
 		outHeartbeats: makeMap(peers, $.now()),
 		messages: [],
-		invitations: null
+		invitations: null,
+		electionEnd: null,
+		history: [{viewid: [-1, -1], ts: 1}]
 		// Is backup?
 		// Buffer. ?
 		// History. ?
@@ -98,7 +104,7 @@ var receiveHeartbeats = function(server) {
 			changeView = true
 		}
 		
-		server.inHeartbeats[m.src] = $.now() + HEARTBEAT_TIMEOUT
+		server.inHeartbeats.set(m.src, $.now() + HEARTBEAT_TIMEOUT)
 		return false
 	})
 
@@ -112,12 +118,12 @@ var receiveHeartbeats = function(server) {
 }
 
 var sendHeartbeats = function(server) {
-	for (peer in server.outHeartbeats) {
-		if (server.outHeartbeats[peer] <= $.now() + MAX_LATENCY) {
+	server.outHeartbeats.forEach(function(heartbeatTime, peer) {
+		if (heartbeatTime <= $.now() + MAX_LATENCY) {
 			sendMessage(server.mymid, peer, "HEART", "")
-			server.outHeartbeats[peer] += HEARTBEAT_TIMEOUT 
+			heartbeatTime += HEARTBEAT_TIMEOUT 
 		}
-	}
+	})
 }
 
 var i = 0
@@ -135,20 +141,40 @@ var runSystem = function() {
 			startViewChange(server)
 		
 		handleInvitation(server)
+		outcome = checkVoteStatus(server)
+		if (outcome == 1) {
+			console.log("Server", server.mymid, "is ready to start a view!")
+		}
 	})
 }
 
 setInterval(runSystem, 1000)
 
+var makeAcceptance = function(server) {
+	acceptance = {}
+	acceptance.up_to_date = server.up_to_date
+	if (server.up_to_date) {
+		acceptance.curViewstamp = server.history[server.history.length - 1]
+		acceptance.isPrimary = server.cur_view.primary === server.mymid
+	} else {
+		acceptance.viewid = server.cur_viewid
+	}
+	return acceptance
+}
+
 var startViewChange = function(server) {
 	server.status = "view_manager"
-	server.invitations = makeMap(server.peers, null)
+	server.invitations = makeMap(server.configuration, null)
+	server.invitations.set(server.mymid, makeAcceptance(server))
+	server.electionEnd = $.now() + VOTE_TIMEOUT
 
 	newViewId = server.cur_viewid
 	newViewId[0] += 1
 	server.max_viewid = newViewId
 
 	for (peer in server.configuration) {
+		if (peer == server.mymid)
+			return
 		sendMessage(server.mymid, peer, "INVITE", newViewId)
 	}
 	// if new node is available, or a node missed a heartbeat.
@@ -156,11 +182,72 @@ var startViewChange = function(server) {
 	// to all nodes.
 }
 
-var checkVoteStatus = function() {
+var viewIdCompare = function(a, b) {
+	if (a[0] > b[0] || (a[0] == a[0] && a[1] > b[1]))
+		return -1
+
+	if (a[0] < b[0] || (a[0] == a[0] && a[1] < b[1]))
+		return 1
+
+	return 0
+}
+
+var checkVoteStatus = function(server) {
 	// Check if your new-view is successful.
 	// Make sure you get enough votes, didn't timeout.
 	// Make sure votes are valid. 
-	// Make sure you weren't invited to a higher view.
+
+	if (server.status != "view_manager" 
+		|| (server.status == "view_manager" && server.electionEnd > $.now()))
+		return 0
+
+	acceptCount = 1 // By default, you've accepted.
+	server.messages = server.messages.filter(function(m) {
+		if (m.type != "ACCEPT")
+			return true
+
+		acceptCount += 1
+		server.invitations.set(m.src, m.content)
+		return false
+	})
+
+	if (acceptCount < Math.floor(server.configuration.length/2) + 1)
+		return -1
+
+	normalCount = 0
+	crashViewId = [-1, -1]
+	normalViewId = [-1, -1]
+	oldPrimaryNormal = false
+
+	x = server.invitations
+	server.invitations.forEach(function(acceptance, peer) {
+		console.log(acceptance)
+		if (acceptance.up_to_date) {
+			normalCount += 1
+
+			if (viewIdCompare(normalViewId, acceptance.curViewstamp.viewid) == 1) {
+				normalViewId = acceptance.curViewstamp.viewid
+				oldPrimaryNormal = false
+			}
+
+			if (viewIdCompare(normalViewId, acceptance.curViewstamp.viewid) == 0
+				&& acceptance.isPrimary)
+				oldPrimaryNormal = true
+		} else {
+			if (viewIdCompare(crashViewId, acceptance.viewid) == 1)
+				crashViewId = acceptance.viewid
+		}
+	})
+
+	if (normalCount > Math.floor(server.configuration.length/2))
+		return 1
+
+	if (viewIdCompare(crashViewId, normalViewId) == 1)
+		return 1
+
+	if (viewIdCompare(crashViewId, normalViewId) == 0 && oldPrimaryNormal)
+		return 1
+	return -1
 }
 
 var beginView = function() {
@@ -179,20 +266,10 @@ var handleInvitation = function(server) {
 			return true
 		
 		proposedViewId = m.content
-		console.log(proposedViewId, server.max_viewid)
-		if (proposedViewId[0] > server.max_viewid[0] 
-			|| (proposedViewId[0] == server.max_viewid[0] 
-				&& proposedViewId[1] > server.max_viewid[1])) {
-			console.log("I got invited")
-			// server.max_viewid = proposedViewId
-			server.max_viewid[0] = proposedViewId[0]
-			server.max_viewid[1] = proposedViewId[1]
+		if (viewIdCompare(proposedViewId, server.max_viewid) == -1) {
+			server.max_viewid = proposedViewId
 			server.status = "underling"
-			acceptance = {}
-			// if (server.up_to_date) {
-			// 	acceptance.viewstamp = server.viewstamp
-			// }
-			sendMessage(server.mymid, m.src, "ACCEPT", acceptance)
+			sendMessage(server.mymid, m.src, "ACCEPT", makeAcceptance(server))
 		}
 
 		return false
