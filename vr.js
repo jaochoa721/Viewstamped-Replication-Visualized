@@ -4,7 +4,7 @@
 var HEARTBEAT_TIMEOUT = 5000;
 var MIN_LATENCY = 1000;
 var MAX_LATENCY = 2000;
-var VOTE_TIMEOUT = 3000;
+var VOTE_TIMEOUT = 6000;
 var pendingMessages = [];
 
 function Message (src, dst, type, content) {
@@ -23,7 +23,7 @@ var makeMap = function(keys, defaultVal) {
 };
 
 var sendMessage = function(src, dst, type, content) {
-	console.log(src + " -> " + dst, type);
+	console.log(src + " -> " + dst, type, content);
 
 	var contentCopy = Object.assign({}, content);
 	var m = new Message(src, dst, type, contentCopy);
@@ -130,8 +130,9 @@ var sendHeartbeats = function(server) {
 };
 
 var i = 0;
+var stop = false;
 var runSystem = function() {
-	if (i > 10) 
+	if (stop === true) 
 		return;
 	console.log("Iteration " + i);
 	i++;
@@ -140,16 +141,19 @@ var runSystem = function() {
 	servers.forEach(function(server) {
 		var changeView = handleHeartbeats(server);
 		var voteExpired = awaitView(server);
-		if (changeView) 
+		if (changeView || voteExpired) 
 			startViewChange(server);
 
 		if (voteExpired)
 			console.log("Server", server.mymid, "thinks the election expired.");
 		
 		handleInvitation(server);
-		var outcome = countVotes(server);
+		var newView = {};
+		var outcome = countVotes(server, newView);
 		if (outcome == 1) {
+			beginView(server, newView)
 			console.log("Server", server.mymid, "is ready to start a view!");
+			console.log("New view", newView)
 		}
 	});
 };
@@ -195,7 +199,7 @@ var viewIdCompare = function(a, b) {
 	return 0;
 };
 
-var countVotes = function(server) {
+var countVotes = function(server, newView) {
 	// Check if coordinating election
 	// Check if time to count votes.
 	if (server.status != "view_manager" 
@@ -221,11 +225,12 @@ var countVotes = function(server) {
 	var crashViewId = [-1, -1];    // Highest 'crashed' viewid
 	var normalViewId = [-1, -1];   // Highest 'normal' viewid
 	var oldPrimaryNormal = false;  // If primary of normalViewId accepted normally.
+	var oldPrimary = null;
 	var cohortsInView = [];
 
 	// The following snippet computes the values of previous variables.
 	server.invitations.forEach(function(acceptance, peer) {
-		if (acceptance != null)
+		if (acceptance === null)
 			return;
 
 		cohortsInView.push(peer);
@@ -237,40 +242,69 @@ var countVotes = function(server) {
 				normalViewId = acceptance.curViewstamp.viewid;
 				oldPrimaryNormal = false;
 			}
+			if (viewIdCompare(normalViewId, acceptance.curViewstamp.viewid) == 0
+				&& acceptance.isPrimary) {
+				oldPrimaryNormal = true;
+				oldPrimary = peer;
+			}
 		} else { 
 			if (viewIdCompare(crashViewId, acceptance.viewid) == 1)
 				crashViewId = acceptance.viewid;
 		}
 	});
 
+	var latestTimestamp = -1;
+	var candidatePrimary = (oldPrimaryNormal) ? oldPrimary : null;
 	// Find the next primary.
-	server.invitations.forEach(function(acceptance, peer) {
-		if (acceptance != null)
-			return;
+	if (candidatePrimary == null) {
+		server.invitations.forEach(function(acceptance, peer) {
+			if (acceptance == null)
+				return;
 
-		if (acceptance.up_to_date 
-			&& viewIdCompare(acceptance.curViewstamp.viewid, normalViewId) == 0) {
-		}
-	})
+			if (acceptance.up_to_date 
+				&& viewIdCompare(acceptance.curViewstamp.viewid, normalViewId) == 0) {
+				if (acceptance.curViewstamp.ts >= latestTimestamp) {
+					latestTimestamp = acceptance.curViewstamp.ts;
+					candidatePrimary = peer;
+				}
+			}
+		});
+	}
 
 	if (normalCount > Math.floor(server.configuration.length/2)
 		|| viewIdCompare(crashViewId, normalViewId) == 1
-		|| viewIdCompare(crashViewId, normalViewId) == 0 && oldPrimaryNormal)
+		|| viewIdCompare(crashViewId, normalViewId) == 0 && oldPrimaryNormal) {
+		newView.primary = candidatePrimary;
+		newView.backups = cohortsInView.filter(function(peer) {
+			return peer !== candidatePrimary;
+		});
+		if (server.mymid !== candidatePrimary) {
+			sendMessage(server.mymid, candidatePrimary, "INITVIEW", 
+						{viewid : server.max_viewid, view: newView});
+			server.status = "underling";
+			server.electionEnd = $.now() + VOTE_TIMEOUT;
+			return 0;
+		}
 		return 1;
+	}
 
 	return -1;
 };
 
-var beginView = function(server) {
+var beginView = function(server, newView) {
 	// if checkVoteStatus == true:
 	// send out InitView to the real primary.
 	// Or write NewView to the buffer.
 	// Become Active.
-	primary = null
-	configuration = 
-	server.invitations.forEach(function(acceptance, peer) {
-
+	server.cur_viewid = server.max_viewid;
+	server.cur_view = newView;
+	server.timestamp = 0;
+	server.history.push({viewid: server.cur_viewid, ts:0});
+	var eventRecord = {cur_view: newView, history: server.history};
+	newView.backups.forEach(function (peer) {
+		sendMessage(server.mymid, peer, "NEWVIEW", eventRecord);
 	});
+	server.status = "active";
 };
 
 var handleInvitation = function(server) {
@@ -285,7 +319,7 @@ var handleInvitation = function(server) {
 		if (viewIdCompare(proposedViewId, server.max_viewid) == -1) {
 			server.max_viewid = proposedViewId;
 			server.status = "underling";
-			server.electionEnd = $.now() + VOTE_TIMEOUT;
+			server.electionEnd = $.now() + 2*VOTE_TIMEOUT;
 			sendMessage(server.mymid, m.src, "ACCEPT", makeAcceptance(server));
 		}
 
@@ -302,14 +336,29 @@ var awaitView = function(server) {
 		if (m.type != "NEWVIEW" && m.type != "INITVIEW")
 			return true;
 
-		if (viewIdCompare(m.viewid, server.max_viewid) != 0)
-			return true;
+		var eventRecord = m.content;
+		var initViewObj = m.content;
+		
+		var newViewId; 
+		if (m.type == "NEWVIEW") {
+			newViewId = eventRecord.history[eventRecord.history.length - 1].viewid;
+		} else {
+			newViewId = initViewObj.viewid;
+		}
+		
+		if (viewIdCompare(newViewId, server.max_viewid) != 0)
+			return false; // Correct? Can it ever become relevant?
 
 		newviewReceived = true;
 		if (m.type == "NEWVIEW") {
-			server.cur_view = m.cur_view;
-			server.cur_viewid = m.cur_viewid;
-			server.history = m.history;
+			server.cur_view = eventRecord.cur_view;
+			server.cur_viewid = newViewId;
+			server.history = eventRecord.history;
+			server.status = "active";
+		}
+
+		if (m.type == "INITVIEW") {
+			beginView(server, initViewObj.view);
 		}
 		return false;
 	});
