@@ -5,6 +5,7 @@ var HEARTBEAT_TIMEOUT = 5000;
 var MIN_LATENCY = 1000;
 var MAX_LATENCY = 2000;
 var VOTE_TIMEOUT = 6000;
+var NUM_SERVERS = 4;
 var pendingMessages = [];
 
 function Message (src, dst, type, content) {
@@ -77,14 +78,14 @@ var createServers = function(total) {
 	}
 
 	var serverList = [];
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < total; i++) {
 		var newServer = createServer(i, 1, serverIds);
 		serverList.push(newServer);
 	}
 	return serverList;
 };
 
-var servers = createServers(4);
+var servers = createServers(NUM_SERVERS);
 
 var handleHeartbeats = function(server) {
 	if (server.status != "active")
@@ -103,7 +104,7 @@ var receiveHeartbeats = function(server) {
 		if (m.type != "HEART")
 			return true;
 
-		if (m.src !== server.cur_view.primary && !server.cur_view.backups.includes(m.src)) {
+		if (!isInView(server, m.src)) {
 			changeView = true;
 		}
 		
@@ -112,12 +113,16 @@ var receiveHeartbeats = function(server) {
 	});
 
 	// Check if any heartbeats timers expired
-	server.inHeartbeats.forEach(function (time) {
-		if (time < $.now())  {
+	server.inHeartbeats.forEach(function (time, peer) {
+		if (time < $.now() && isInView(server, peer))  {
 			changeView = true;
 		}
 	});
 	return changeView;
+};
+
+var isInView = function(server, peer) {
+	return (peer === server.cur_view.primary || server.cur_view.backups.includes(peer));
 };
 
 var sendHeartbeats = function(server) {
@@ -139,10 +144,18 @@ var runSystem = function() {
 
 	deliverMessage();
 	servers.forEach(function(server) {
+		if (server.status == "stop") {
+			server.messages = [];
+			return;
+		}
 		var changeView = handleHeartbeats(server);
 		var voteExpired = awaitView(server);
-		if (changeView || voteExpired) 
+		var restartVote = retryElection(server);
+
+		if (changeView || voteExpired || restartVote)  {
+			console.log("Server ", server.mymid, "Heart:", changeView, "Vote:", voteExpired, "restartVote", restartVote);
 			startViewChange(server);
+		}
 
 		if (voteExpired)
 			console.log("Server", server.mymid, "thinks the election expired.");
@@ -155,7 +168,17 @@ var runSystem = function() {
 			console.log("Server", server.mymid, "is ready to start a view!");
 			console.log("New view", newView)
 		}
+		if (outcome == -1) {
+			console.log("Server", server.mymid, "failed an election!");
+			server.status = "failed-election"
+			server.retryTime = $.now() + 2*VOTE_TIMEOUT;
+		}
 	});
+};
+
+var retryElection = function(server) {
+	return (server.status === "failed-election"
+		&& server.retryTime < $.now());
 };
 
 setInterval(runSystem, 1000);
@@ -178,10 +201,12 @@ var startViewChange = function(server) {
 	server.invitations.set(server.mymid, makeAcceptance(server));
 	server.electionEnd = $.now() + VOTE_TIMEOUT;
 
-	var newViewId = server.cur_viewid;
-	newViewId[0] += 1;
+	var newViewId = [server.max_viewid[0] + 1, server.mymid];
 	server.max_viewid = newViewId;
 
+	server.messages = server.messages.filter(function (m) {
+		return m.type !== "ACCEPT";
+	});
 	for (var peer in server.configuration) {
 		if (peer == server.mymid)
 			continue;
@@ -232,7 +257,7 @@ var countVotes = function(server, newView) {
 	server.invitations.forEach(function(acceptance, peer) {
 		if (acceptance === null)
 			return;
-
+		console.log("Counting votes: ", acceptance);
 		cohortsInView.push(peer);
 		if (acceptance.up_to_date) {
 			normalCount += 1;
@@ -321,6 +346,8 @@ var handleInvitation = function(server) {
 			server.status = "underling";
 			server.electionEnd = $.now() + 2*VOTE_TIMEOUT;
 			sendMessage(server.mymid, m.src, "ACCEPT", makeAcceptance(server));
+		} else {
+			console.log("Server", server.mymid, "rejected Server", m.src, "because", proposedViewId, "<", server.max_viewid)
 		}
 
 		return false;
