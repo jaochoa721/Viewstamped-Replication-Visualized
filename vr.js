@@ -4,7 +4,7 @@
 var HEARTBEAT_TIMEOUT = 5000;
 var MIN_LATENCY = 1000;
 var MAX_LATENCY = 2000;
-var VOTE_TIMEOUT = 5000;
+var VOTE_TIMEOUT = 3000;
 var pendingMessages = [];
 
 function Message (src, dst, type, content) {
@@ -139,8 +139,12 @@ var runSystem = function() {
 	deliverMessage();
 	servers.forEach(function(server) {
 		var changeView = handleHeartbeats(server);
+		var voteExpired = awaitView(server);
 		if (changeView) 
 			startViewChange(server);
+
+		if (voteExpired)
+			console.log("Server", server.mymid, "thinks the election expired.");
 		
 		handleInvitation(server);
 		var outcome = countVotes(server);
@@ -217,25 +221,37 @@ var countVotes = function(server) {
 	var crashViewId = [-1, -1];    // Highest 'crashed' viewid
 	var normalViewId = [-1, -1];   // Highest 'normal' viewid
 	var oldPrimaryNormal = false;  // If primary of normalViewId accepted normally.
+	var cohortsInView = [];
 
-	// The following snippet computes the values of previous 4 variables.
+	// The following snippet computes the values of previous variables.
 	server.invitations.forEach(function(acceptance, peer) {
+		if (acceptance != null)
+			return;
+
+		cohortsInView.push(peer);
 		if (acceptance.up_to_date) {
 			normalCount += 1;
 
+			// Update normal viewid
 			if (viewIdCompare(normalViewId, acceptance.curViewstamp.viewid) == 1) {
 				normalViewId = acceptance.curViewstamp.viewid;
 				oldPrimaryNormal = false;
 			}
-
-			if (viewIdCompare(normalViewId, acceptance.curViewstamp.viewid) == 0
-				&& acceptance.isPrimary)
-				oldPrimaryNormal = true;
 		} else { 
 			if (viewIdCompare(crashViewId, acceptance.viewid) == 1)
 				crashViewId = acceptance.viewid;
 		}
 	});
+
+	// Find the next primary.
+	server.invitations.forEach(function(acceptance, peer) {
+		if (acceptance != null)
+			return;
+
+		if (acceptance.up_to_date 
+			&& viewIdCompare(acceptance.curViewstamp.viewid, normalViewId) == 0) {
+		}
+	})
 
 	if (normalCount > Math.floor(server.configuration.length/2)
 		|| viewIdCompare(crashViewId, normalViewId) == 1
@@ -245,11 +261,16 @@ var countVotes = function(server) {
 	return -1;
 };
 
-var beginView = function() {
+var beginView = function(server) {
 	// if checkVoteStatus == true:
 	// send out InitView to the real primary.
 	// Or write NewView to the buffer.
 	// Become Active.
+	primary = null
+	configuration = 
+	server.invitations.forEach(function(acceptance, peer) {
+
+	});
 };
 
 var handleInvitation = function(server) {
@@ -272,7 +293,31 @@ var handleInvitation = function(server) {
 	});
 };
 
-var awaitView = function() {
+var awaitView = function(server) {
+	if (server.status != "underling")
+		return false;
+
+	var newviewReceived = false;
+	server.messages = server.messages.filter(function(m) {
+		if (m.type != "NEWVIEW" && m.type != "INITVIEW")
+			return true;
+
+		if (viewIdCompare(m.viewid, server.max_viewid) != 0)
+			return true;
+
+		newviewReceived = true;
+		if (m.type == "NEWVIEW") {
+			server.cur_view = m.cur_view;
+			server.cur_viewid = m.cur_viewid;
+			server.history = m.history;
+		}
+		return false;
+	});
+
+	if (!newviewReceived && server.electionEnd < $.now()) 
+		return true;
+
+	return false;
 	// Check the status by waiting for a message
 	// that has the max_viewid you recorded. => Become active
 	// If election times out, then run a view
