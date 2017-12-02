@@ -51,19 +51,19 @@ var createServer = function(id, groupid, configuration) {
 		configuration: configuration,
 		mymid: id,
 		mygroupid: groupid,
-		cur_viewid: [1, id],
+		cur_viewid: [1, 1],
 		cur_view: {
 			primary: null,
 			backups: [id]
 		},
-		max_viewid: [1, id],
+		max_viewid: [1, 1],
 		timestamp: 1,
 		inHeartbeats: makeMap(peers, $.now() + HEARTBEAT_TIMEOUT),
 		outHeartbeats: makeMap(peers, $.now()),
 		messages: [],
 		invitations: null,
 		electionEnd: null,
-		history: [{viewid: [-1, -1], ts: 1}]
+		history: [{viewid: [1, 1], ts: 1}]
 		// Is backup?
 		// Buffer. ?
 		// History. ?
@@ -143,6 +143,14 @@ var runSystem = function() {
 	i++;
 
 	deliverMessage();
+
+	if (window.drawServer) {
+		servers.forEach(function(server) {
+			// 27 is width of server box.
+			window.drawServer(27, server);
+		});
+	}
+
 	servers.forEach(function(server) {
 		if (server.status == "stop") {
 			server.messages = [];
