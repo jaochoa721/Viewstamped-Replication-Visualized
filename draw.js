@@ -4,10 +4,9 @@ window.onload = function() {
 	servers.forEach(function(server)  {
 		preElement = document.createElement("pre");
 		preElement.id = server.mymid;
+		preElement.style.display = "inline-block"
 		document.body.appendChild(preElement);
 	});
-	var initialize
-
 	var makeTable = function(title, xLabel, yLabel, startIndex, map, xExtractor, yExtractor, bodyMap) {
 		var j = startIndex;
 		bodyMap[j] = title;
