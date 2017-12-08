@@ -1,11 +1,29 @@
 
 window.onload = function() {
 
+	$("#stop_button").click(function(e) {
+		stop = !stop;
+		$(this).text((stop) ? "Resume" : "Pause");
+	});
 	servers.forEach(function(server)  {
-		preElement = document.createElement("pre");
+		var preElement = document.createElement("pre");
 		preElement.id = server.mymid;
 		preElement.style.display = "inline-block"
-		document.body.appendChild(preElement);
+		$("#container").append(preElement);
+		var button = document.createElement("button");
+		button.id = "kill-" + server.mymid;
+		button.textContent = "Kill " + server.mymid; 
+		button.addEventListener("click", function(e) {
+			if (server.status == "stop") {
+				server.status = "active";
+				button.textContent = "Kill " + server.mymid;
+			}
+			else {
+				server.status = "stop";
+				button.textContent = "Revive " + server.mymid;
+			}
+		});
+		document.body.appendChild(button);
 	});
 	var makeTable = function(title, xLabel, yLabel, startIndex, map, xExtractor, yExtractor, bodyMap) {
 		var j = startIndex;

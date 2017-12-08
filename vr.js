@@ -38,7 +38,7 @@ var deliverMessage = function() {
 		if (m.deliverTime > now)
 			return true;
 
-		servers[m.dst].messages.push(m);
+		nodes[m.dst].messages.push(m);
 		return false;
 	});
 };
@@ -71,6 +71,20 @@ var createServer = function(id, groupid, configuration) {
 	};
 };
 
+var createClient = function(servers) {
+	return {
+		mymid: NUM_SERVERS,
+		messages: [],
+		viewid: [0, 0],
+		lastTransaction: 0,
+		primary: null,
+		status: "free",
+		workToDo: false,
+		timeout: null,
+		servers: servers
+	};
+};
+
 var createServers = function(total) {
 	var serverIds = [];
 	for (var i = 0; i < total; i++) {
@@ -86,6 +100,8 @@ var createServers = function(total) {
 };
 
 var servers = createServers(NUM_SERVERS);
+var client = createClient(servers);
+var nodes = servers.concat(client);
 
 var handleHeartbeats = function(server) {
 	if (server.status != "active")
@@ -147,9 +163,11 @@ var runSystem = function() {
 	if (window.drawServer) {
 		servers.forEach(function(server) {
 			// 27 is width of server box.
-			window.drawServer(27, server);
+			window.drawServer(30, server);
 		});
 	}
+
+	runClient(client);
 
 	servers.forEach(function(server) {
 		if (server.status == "stop") {
@@ -183,6 +201,71 @@ var runSystem = function() {
 		}
 	});
 };
+
+
+var runClient = function(client) {
+	if (!workToDo) return;
+
+	if (status == "free") {
+		beginTransaction(client);
+	}
+	
+	// Await an ACK.
+	// 		On Ack: Allow Client to Commit.
+	//		On Timeout: Abort? or Retry?
+	if (status == "wait-ack") {
+		awaitAck(client)
+	}
+
+	// On Client-Commit:
+	// 		Send a commit to primary.
+	//		Wait for prepares.
+	// On Prepares:
+	//		Commit Txn
+	// On Commit:
+	//		Report success? Set status to ready.
+	if (status == "commit-ready") {
+		prepareTransaction(client);
+	}
+
+	if (status == "wait-prepare") {
+		var res = awaitPrepare(client);
+		if (res == 1)
+			commitTransaction(client);
+		// Otherwise, abort, or retry.
+	}
+
+	if (status == "wait-commit") {
+		awaitCommit(client);
+	}
+};
+
+// Create a transaction.
+// Send it to primary.	
+var beginTransaction = function(client) {
+
+};
+
+var prepareTransaction = function(client) {
+
+};
+
+var commitTransaction = function(client) {
+
+};
+
+var awaitAck = function(client) {
+
+};
+
+var awaitPrepare = function(client) {
+
+};
+
+var awaitCommit = function(client) {
+
+};
+
 
 var retryElection = function(server) {
 	return (server.status === "failed-election"
