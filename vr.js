@@ -235,20 +235,28 @@ var viewIdCompare = function(a, b) {
 var countVotes = function(server, newView) {
 	// Check if coordinating election
 	// Check if time to count votes.
-	if (server.status != "view_manager" 
-		|| (server.status == "view_manager" && server.electionEnd > $.now()))
+	// || (server.status == "view_manager" && server.electionEnd > $.now()))
+	if (server.status != "view_manager")
 		return 0;
 
 	// Count/Store Responses (By default, you've accepted.)
-	var acceptCount = 1;
 	server.messages = server.messages.filter(function(m) {
 		if (m.type != "ACCEPT")
 			return true;
 
-		acceptCount += 1;
 		server.invitations.set(m.src, m.content);
 		return false;
 	});
+
+	if (server.electionEnd > $.now())
+		return 0;
+
+	var acceptCount = 0
+	server.invitations.forEach(function(acceptance, peer) {
+		console.log(acceptance)
+		if (acceptance != null)
+			acceptCount += 1
+	})
 
 	// If no majority, failed view-change.
 	if (acceptCount < Math.floor(server.configuration.length/2) + 1)
