@@ -54,7 +54,11 @@ var runSystem = function() {
 			server.retryTime = $.now() + 2*VOTE_TIMEOUT;
 		}
 
-		handleBegin(server);
+		if (server.status == "active") {
+			handleBegin(server);
+			updateHistory(server);
+			handlePrepare(server);
+		}
 	});
 };
 
@@ -67,7 +71,7 @@ window.onload = function () {
 			$(this).text("Awaiting Ack").prop("disabled", true);
 		}
 		if (client.workToDo && client.status == "ready") {
-			client.status = "commit-ready";
+			client.status = "prepare-ready";
 			$(this).text("Awaiting Prep").prop("disabled", true);
 		}
 	});
@@ -87,22 +91,16 @@ var runClient = function(client) {
 		awaitAck(client)
 	}
 
-	// On Client-Commit:
-	// 		Send a commit to primary.
-	//		Wait for prepares.
-	// On Prepares:
-	//		Commit Txn
-	// On Commit:
-	//		Report success? Set status to ready.
-	if (client.status == "commit-ready") {
+	if (client.status == "prepare-ready") {
 		prepareTransaction(client);
 	}
 
 	if (client.status == "wait-prepare") {
-		var res = awaitPrepare(client);
-		if (res == 1)
-			commitTransaction(client);
-		// Otherwise, abort, or retry.
+		awaitPrepare(client);
+	}
+
+	if (client.status == "commit-ready") {
+		commitTransaction(client);
 	}
 
 	if (client.status == "wait-commit") {
@@ -135,7 +133,8 @@ var findPrimary = function(client) {
 }
 
 var prepareTransaction = function(client) {
-
+	sendMessage(client.mymid, client.primary, "PREPARE", {aid: client.lastTransaction, pset: client.viewstamp})
+	client.status = "wait-prepare";
 };
 
 var commitTransaction = function(client) {
@@ -147,15 +146,22 @@ var awaitAck = function(client) {
 		if (m.type != "BEGIN-ACK")
 			return true;
 		// Confirm that txn is for you?
-		client.viewstamp = m.content.pset.viewstamp;
+		client.viewstamp = m.content.pset;
 		client.status = "ready";
-		$('#transact_button').prop("disabled", false).text("Commit");
+		$('#transact_button').prop("disabled", false).text("Commit TXN");
 		return false;
 	});
 };
 
 var awaitPrepare = function(client) {
-
+	client.messages = client.messages.filter(function(m) {
+		if (m.type != "PREPARED")
+			return true;
+		// Confirm that txn is for you?
+		client.status = "commit-ready"
+		$('#transact_button').text("Sending Commit");
+		return false;
+	});
 };
 
 var awaitCommit = function(client) {

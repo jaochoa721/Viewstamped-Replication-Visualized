@@ -27,7 +27,8 @@ var sendMessage = function(src, dst, type, content) {
 	if (type !== "HEART")
 		console.log(src + " -> " + dst, type, content);
 
-	var contentCopy = Object.assign({}, content);
+	// var contentCopy = Object.assign({}, content);
+	var contentCopy = JSON.parse(JSON.stringify(content));
 	var m = new Message(src, dst, type, contentCopy);
 	m.deliverTime = $.now() + MIN_LATENCY + Math.random()*(MAX_LATENCY - MIN_LATENCY);
 	pendingMessages.push(m);
@@ -391,6 +392,33 @@ var handleBegin = function(server) {
 	});
 };
 
+var handlePrepare = function(server) {
+	server.messages = server.messages.filter(function(m){
+		if (m.type != "PREPARE")
+			return true;
+
+		// Really a viewid...
+		var pset = m.content.pset;
+		var compatible = true;
+		server.history.forEach(function(viewstamp) {
+			if (viewIdCompare(pset.viewid, viewstamp.viewid)) {
+				if (pset.ts > viewstamp.ts)
+					compatible = false;
+			}
+		});
+
+		if (!compatible) {
+			sendMessage(server.mymid, m.src, "ABORT", {aid: m.content.aid});
+			addToBuffer(server, {operation: 'aborted', aid: m.content.aid});
+		} else {
+			// Assert that backups have ACK'd info.
+			addToBuffer(server, {operation: 'committed', aid: m.content.aid});
+			sendMessage(server.mymid, m.src, "PREPARED", {aid: m.content.aid});
+		}
+		return false;
+	});
+};
+
 var addToBuffer = function(server, record) {
 	server.timestamp += 1;
 	var viewstamp = {viewid: server.cur_viewid, ts: server.timestamp}
@@ -404,4 +432,15 @@ var addToBuffer = function(server, record) {
 	});
 	return viewstamp;
 }; 
+
+var updateHistory = function(server) {
+	// Confirm message is from primary?
+	// Save more information?
+	server.messages = server.messages.filter(function(m){
+		if (m.type != "COPY")
+			return true;
+		server.history.push(m.content.viewstamp);
+		return false;
+	});
+};
 
