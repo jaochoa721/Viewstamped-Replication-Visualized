@@ -24,7 +24,8 @@ var makeMap = function(keys, defaultVal) {
 };
 
 var sendMessage = function(src, dst, type, content) {
-	console.log(src + " -> " + dst, type, content);
+	if (type !== "HEART")
+		console.log(src + " -> " + dst, type, content);
 
 	var contentCopy = Object.assign({}, content);
 	var m = new Message(src, dst, type, contentCopy);
@@ -99,10 +100,6 @@ var createServers = function(total) {
 	return serverList;
 };
 
-var servers = createServers(NUM_SERVERS);
-var client = createClient(servers);
-var nodes = servers.concat(client);
-
 var handleHeartbeats = function(server) {
 	if (server.status != "active")
 		return false;
@@ -150,129 +147,10 @@ var sendHeartbeats = function(server) {
 	});
 };
 
-var i = 0;
-var stop = false;
-var runSystem = function() {
-	if (stop === true) 
-		return;
-	console.log("Iteration " + i);
-	i++;
-
-	deliverMessage();
-
-	if (window.drawServer) {
-		servers.forEach(function(server) {
-			// 27 is width of server box.
-			window.drawServer(30, server);
-		});
-	}
-
-	runClient(client);
-
-	servers.forEach(function(server) {
-		if (server.status == "stop") {
-			server.messages = [];
-			return;
-		}
-		var changeView = handleHeartbeats(server);
-		var voteExpired = awaitView(server);
-		var restartVote = retryElection(server);
-
-		if (changeView || voteExpired || restartVote)  {
-			console.log("Server ", server.mymid, "Heart:", changeView, "Vote:", voteExpired, "restartVote", restartVote);
-			startViewChange(server);
-		}
-
-		if (voteExpired)
-			console.log("Server", server.mymid, "thinks the election expired.");
-		
-		handleInvitation(server);
-		var newView = {};
-		var outcome = countVotes(server, newView);
-		if (outcome == 1) {
-			beginView(server, newView)
-			console.log("Server", server.mymid, "is ready to start a view!");
-			console.log("New view", newView)
-		}
-		if (outcome == -1) {
-			console.log("Server", server.mymid, "failed an election!");
-			server.status = "failed-election"
-			server.retryTime = $.now() + 2*VOTE_TIMEOUT;
-		}
-	});
-};
-
-
-var runClient = function(client) {
-	if (!workToDo) return;
-
-	if (status == "free") {
-		beginTransaction(client);
-	}
-	
-	// Await an ACK.
-	// 		On Ack: Allow Client to Commit.
-	//		On Timeout: Abort? or Retry?
-	if (status == "wait-ack") {
-		awaitAck(client)
-	}
-
-	// On Client-Commit:
-	// 		Send a commit to primary.
-	//		Wait for prepares.
-	// On Prepares:
-	//		Commit Txn
-	// On Commit:
-	//		Report success? Set status to ready.
-	if (status == "commit-ready") {
-		prepareTransaction(client);
-	}
-
-	if (status == "wait-prepare") {
-		var res = awaitPrepare(client);
-		if (res == 1)
-			commitTransaction(client);
-		// Otherwise, abort, or retry.
-	}
-
-	if (status == "wait-commit") {
-		awaitCommit(client);
-	}
-};
-
-// Create a transaction.
-// Send it to primary.	
-var beginTransaction = function(client) {
-
-};
-
-var prepareTransaction = function(client) {
-
-};
-
-var commitTransaction = function(client) {
-
-};
-
-var awaitAck = function(client) {
-
-};
-
-var awaitPrepare = function(client) {
-
-};
-
-var awaitCommit = function(client) {
-
-};
-
-
 var retryElection = function(server) {
 	return (server.status === "failed-election"
 		&& server.retryTime < $.now());
 };
-
-setInterval(runSystem, 1000);
 
 var makeAcceptance = function(server) {
 	var acceptance = {};
@@ -499,3 +377,31 @@ var awaitView = function(server) {
 	// change yourself. 
 	// If you receive an voteRequest for bigger view_id, accept it.
 };
+
+// Handle situation where no longer primary. 
+var handleBegin = function(server) {
+	if (server.status != 'active') return;
+	server.messages = server.messages.filter(function(m){
+		if (m.type != "BEGIN")
+			return true;
+
+		var viewstamp = addToBuffer(server, {operation: 'completed-call', aid: m.content.aid})
+		sendMessage(server.mymid, m.src, "BEGIN-ACK", {pset: viewstamp});
+		return false;
+	});
+};
+
+var addToBuffer = function(server, record) {
+	server.timestamp += 1;
+	var viewstamp = {viewid: server.cur_viewid, ts: server.timestamp}
+	server.history.push(viewstamp);
+	// record: operation.
+	// 		   aid.
+	//		   viewstamp.
+	record.viewstamp = viewstamp;
+	server.cur_view.backups.forEach(function(backup) {
+		sendMessage(server.mymid, backup, "COPY", record);
+	});
+	return viewstamp;
+}; 
+
