@@ -96,7 +96,7 @@ window.animateMessage = function(msg) {
 	var src = msg.src;
 	var dest = msg.dst;
 	msgCounter += 1;
-	var msgText = (msg.type == "HEART") ? "H" : msg.type;
+	var msgText = (msg.type == "HEART") ? "♥" : msg.type;
 	var arrowMessage = $('<pre id="message' + msgCounter + '">' + msgText + '</pre>');
 	arrowMessage.insertAfter("#container");
 

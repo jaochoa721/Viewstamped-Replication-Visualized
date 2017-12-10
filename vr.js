@@ -126,13 +126,14 @@ var receiveHeartbeats = function(server) {
 			changeView = true;
 		}
 		
-		server.inHeartbeats.set(m.src, $.now() + HEARTBEAT_TIMEOUT);
+		server.inHeartbeats.set(m.src, server.inHeartbeats.get(m.src) + HEARTBEAT_TIMEOUT);
 		return false;
 	});
 
 	// Check if any heartbeats timers expired
 	server.inHeartbeats.forEach(function (time, peer) {
 		if (time < $.now() && isInView(server, peer))  {
+			console.log("Expected:", time, "True:", servers[peer].outHeartbeats.get(server.mymid));
 			changeView = true;
 		}
 	});
@@ -148,7 +149,7 @@ var sendHeartbeats = function(server) {
 		if (server.mymid == 0) {
 			console.log(peer, "-", heartbeatTime, heartbeatTime - $.now());
 		}
-		if (heartbeatTime <= $.now() + MAX_LATENCY) {
+		if (heartbeatTime <= $.now() + MAX_LATENCY + 2000) {
 			if (server.mymid == 0) {
 				console.log(peer, "-", "thinks its time to send/");
 			}
@@ -313,6 +314,17 @@ var beginView = function(server, newView) {
 	server.cur_view = newView;
 	server.timestamp = 0;
 	server.history.push({viewid: server.cur_viewid, ts:0});
+
+	server.inHeartbeats.forEach(function(time, peer, map) {
+		map.set(peer, $.now() + HEARTBEAT_TIMEOUT + MAX_LATENCY);
+	});
+	server.outHeartbeats.forEach(function(time, peer, map) {
+		map.set(peer, $.now() + HEARTBEAT_TIMEOUT + MAX_LATENCY);
+	});	
+	server.messages = server.messages.filter(function (m) {
+		return m.type !== "HEART";
+	});	
+
 	var eventRecord = {cur_view: newView, history: server.history};
 	newView.backups.forEach(function (peer) {
 		sendMessage(server.mymid, peer, "NEWVIEW", eventRecord);
@@ -374,8 +386,8 @@ var awaitView = function(server) {
 				map.set(peer, $.now() + HEARTBEAT_TIMEOUT);
 			});
 			server.outHeartbeats.forEach(function(time, peer, map) {
-				map.set(peer, $.now());
-			});	
+				map.set(peer, $.now() + HEARTBEAT_TIMEOUT);
+			});
 			console.log("Server ",server.mymid, " has updated its heartbeats!");
 		}
 
@@ -385,6 +397,13 @@ var awaitView = function(server) {
 		return false;
 	});
 
+	if (newviewReceived) {
+		console.log(server.messages);
+		server.messages = server.messages.filter(function (m) {
+			return m.type !== "HEART";
+		});	
+		console.log(server.messages);
+	}
 	if (!newviewReceived && server.electionEnd < $.now()) 
 		return true;
 
