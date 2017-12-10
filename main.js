@@ -82,12 +82,15 @@ for (var i = 0; i < servers.length; ++i) {
 var msgCounter = 0;
 
 var createTween = function(srcPos, destPos, delay, elem) {
+	// console.log("Start Src:", srcPos);
 	var coords = srcPos; // Start at (0, 0)
 	var tween = new TWEEN.Tween(coords) // Create a new tween that modifies 'coords'.
 	        .to(destPos, delay) // Move to (300, 200) in 1 second.
 	        .easing(TWEEN.Easing.Linear.None)
 	        .onUpdate(function() { 
-	            elem.style.setProperty('transform', 'translate(' + coords.x + 'px, ' + coords.y + 'px)');
+	            elem.style.setProperty('top', coords.y + 'px');
+	            elem.style.setProperty('left', coords.x + 'px')
+	            // console.log("COORDS: ", coords)
 	        })
 	return tween;
 }
@@ -97,26 +100,37 @@ window.animateMessage = function(msg) {
 	var dest = msg.dst;
 	msgCounter += 1;
 	var msgText = (msg.type == "HEART") ? "♥" : msg.type;
+	// var msgText = (msg.type == "INVITE") ? "I" : msgText;
 	var arrowMessage = $('<pre id="message' + msgCounter + '">' + msgText + '</pre>');
 	arrowMessage.insertAfter("#container");
 
 	arrowMessage.css({position: 'absolute'});
 	// var source = 
 	var arrowPos = arrowMessage.position();
-	var srcPos = $('#' + src).position();
-	var destPos = $('#' + dest).position();
+	var srcPos = $('#' + src).offset();
+	var destPos = $('#' + dest).offset();
+	// console.log(srcPos, destPos)
 	var ele = arrowMessage.get(0);
-	var space = 20;
-	var tweenDown = createTween({ x: srcPos.left + 30, y: srcPos.top - 40},
-							{ x: srcPos.left + 30, y: srcPos.top + 20 + space*(dest)},
-							500, ele);
+	ele.style.setProperty('top',srcPos.top  + 200 + 'px');
+	ele.style.setProperty('left',srcPos.left + 10 + 'px');
 
-	var tweenAcross = createTween({ x: srcPos.left + 30, y: srcPos.top + 20 + space *(dest) },
-								{ x: destPos.left + 30, y: destPos.top + 20 + space*(dest) }, 
+	var space = 20;
+	var tweenDown = createTween({ x: srcPos.left + 10, y: srcPos.top + 200},
+							{ x: srcPos.left + 10, y: srcPos.top + 200 + space*(dest+1)},
+							500, ele);
+	if (msg.type === "INVITE") {
+		console.log(space, dest, space*dest, srcPos.top + 200 + space * (dest+1));
+		console.log("Invite with dst pos: ",  {x: srcPos.left + 10, y: srcPos.top + 200 + space*(dest+1)})
+	}
+
+	// console.log({ x: srcPos.left + 30, y: srcPos.top})
+
+	var tweenAcross = createTween({ x: srcPos.left + 10, y: srcPos.top + 200 + space *(dest+1) },
+								{ x: destPos.left + 10, y: destPos.top + 200 + space*(dest+1) }, 
 								msg.deliverTime - $.now() - 1000, ele);
 
-	var tweenUp = createTween({ x: destPos.left + 30, y: destPos.top + 20 + space*(dest)},
-							{ x: destPos.left + 30, y: destPos.top - 40 },
+	var tweenUp = createTween({ x: destPos.left + 10, y: destPos.top + 200 + space*(dest+1)},
+							{ x: destPos.left + 10, y: destPos.top + 200},
 							500, ele);
 	tweenUp.onComplete(function() { arrowMessage.remove(); });
 

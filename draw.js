@@ -22,7 +22,8 @@ var initializeDraw = function() {
 				button.textContent = "Revive " + server.mymid;
 			}
 		});
-		document.body.appendChild(button);
+		$("#buttons").append(button)
+		// document.body.appendChild(button);
 	});
 }
 

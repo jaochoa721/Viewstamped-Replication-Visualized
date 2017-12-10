@@ -9,8 +9,8 @@ var NUM_SERVERS = 4;
 var pendingMessages = [];
 
 function Message (src, dst, type, content) {
-	this.src = src;
-	this.dst = dst;
+	this.src = parseInt(src);
+	this.dst = parseInt(dst);
 	this.type = type;
 	this.content = content;
 }
