@@ -58,6 +58,7 @@ var runSystem = function() {
 			handleBegin(server);
 			updateHistory(server);
 			handlePrepare(server);
+			handleCommit(server);
 		}
 	});
 };
@@ -138,7 +139,7 @@ var prepareTransaction = function(client) {
 };
 
 var commitTransaction = function(client) {
-	sendMessage(client.mymid, client.primary, "COMMIT", {{aid: client.lastTransaction, pset: client.viewstamp}});
+	sendMessage(client.mymid, client.primary, "COMMIT", {aid: client.lastTransaction, pset: client.viewstamp});
 	client.status = "free";
 	client.workToDo = false;
 };
@@ -161,7 +162,7 @@ var awaitPrepare = function(client) {
 			return true;
 		// Confirm that txn is for you?
 		client.status = "commit-ready"
-		$('#transact_button').text("Sending Commit");
+		$('#transact_button').text("Begin TXN").prop("disabled", false);
 		return false;
 	});
 };

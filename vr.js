@@ -401,9 +401,11 @@ var handlePrepare = function(server) {
 		var pset = m.content.pset;
 		var compatible = true;
 		server.history.forEach(function(viewstamp) {
-			if (viewIdCompare(pset.viewid, viewstamp.viewid)) {
-				if (pset.ts > viewstamp.ts)
+			if (viewIdCompare(pset.viewid, viewstamp.viewid) == 0) {
+				if (pset.ts > viewstamp.ts) {
+					console.log(viewstamp, pset)
 					compatible = false;
+				}
 			}
 		});
 
@@ -412,8 +414,27 @@ var handlePrepare = function(server) {
 			addToBuffer(server, {operation: 'aborted', aid: m.content.aid});
 		} else {
 			// Assert that backups have ACK'd info.
-			
-			sendMessage(server.mymid, m.src, "PREPARED", {aid: m.content.aid});
+			var count = 0;
+			servers.forEach(function(peer){
+				if (peer.status != "active")
+					return;
+
+				var result = peer.history.find(function(viewstamp){
+					if (viewIdCompare(pset.viewid, viewstamp.viewid) === 0) {
+						if (pset.ts == viewstamp.ts)
+							return true;
+					}
+					return false;
+				});
+
+				if (result)
+					count += 1;
+			});
+
+			if (count > Math.floor(server.configuration.length/2))
+				sendMessage(server.mymid, m.src, "PREPARED", {aid: m.content.aid});
+			else
+				console.log("oh no, not everyone has the copy. We'll try later.");
 		}
 		return false;
 	});
