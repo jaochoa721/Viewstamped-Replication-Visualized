@@ -133,12 +133,14 @@ var findPrimary = function(client) {
 }
 
 var prepareTransaction = function(client) {
-	sendMessage(client.mymid, client.primary, "PREPARE", {aid: client.lastTransaction, pset: client.viewstamp})
+	sendMessage(client.mymid, client.primary, "PREPARE", {aid: client.lastTransaction, pset: client.viewstamp});
 	client.status = "wait-prepare";
 };
 
 var commitTransaction = function(client) {
-
+	sendMessage(client.mymid, client.primary, "COMMIT", {{aid: client.lastTransaction, pset: client.viewstamp}});
+	client.status = "free";
+	client.workToDo = false;
 };
 
 var awaitAck = function(client) {

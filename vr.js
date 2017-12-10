@@ -412,10 +412,19 @@ var handlePrepare = function(server) {
 			addToBuffer(server, {operation: 'aborted', aid: m.content.aid});
 		} else {
 			// Assert that backups have ACK'd info.
-			addToBuffer(server, {operation: 'committed', aid: m.content.aid});
+			
 			sendMessage(server.mymid, m.src, "PREPARED", {aid: m.content.aid});
 		}
 		return false;
+	});
+};
+
+var handleCommit = function(server) {
+	server.messages = server.messages.filter(function(m){
+		if (m.type != "COMMIT")
+			return true;
+		addToBuffer(server, {operation: 'committed', aid: m.content.aid});
+		sendMessage(server.mymid, m.src, "DONE", {aid: m.content.aid});
 	});
 };
 
