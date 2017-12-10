@@ -64,6 +64,67 @@ var runSystem = function() {
 };
 
 setInterval(runSystem, 1000);
+
+var tweens = [];
+function animate(time) {
+    requestAnimationFrame(animate);
+    TWEEN.update(time);
+}
+requestAnimationFrame(animate);
+
+var road;
+for (var i = 0; i < servers.length; ++i) {
+	for (var j = i + 1; j < servers.length; ++j) {
+
+	}
+}
+
+var msgCounter = 0;
+
+var createTween = function(srcPos, destPos, delay, elem) {
+	var coords = srcPos; // Start at (0, 0)
+	var tween = new TWEEN.Tween(coords) // Create a new tween that modifies 'coords'.
+	        .to(destPos, delay) // Move to (300, 200) in 1 second.
+	        .easing(TWEEN.Easing.Linear.None)
+	        .onUpdate(function() { 
+	            elem.style.setProperty('transform', 'translate(' + coords.x + 'px, ' + coords.y + 'px)');
+	        })
+	return tween;
+}
+
+window.animateMessage = function(msg) {
+	var src = msg.src;
+	var dest = msg.dst;
+	msgCounter += 1;
+	var msgText = (msg.type == "HEART") ? "H" : msg.type;
+	var arrowMessage = $('<pre id="message' + msgCounter + '">' + msgText + '</pre>');
+	arrowMessage.insertAfter("#container");
+
+	arrowMessage.css({position: 'absolute'});
+	// var source = 
+	var arrowPos = arrowMessage.position();
+	var srcPos = $('#' + src).position();
+	var destPos = $('#' + dest).position();
+	var ele = arrowMessage.get(0);
+	var space = 20;
+	var tweenDown = createTween({ x: srcPos.left + 30, y: srcPos.top - 40},
+							{ x: srcPos.left + 30, y: srcPos.top + 20 + space*(dest)},
+							500, ele);
+
+	var tweenAcross = createTween({ x: srcPos.left + 30, y: srcPos.top + 20 + space *(dest) },
+								{ x: destPos.left + 30, y: destPos.top + 20 + space*(dest) }, 
+								msg.deliverTime - $.now() - 1000, ele);
+
+	var tweenUp = createTween({ x: destPos.left + 30, y: destPos.top + 20 + space*(dest)},
+							{ x: destPos.left + 30, y: destPos.top - 40 },
+							500, ele);
+	tweenUp.onComplete(function() { arrowMessage.remove(); });
+
+	tweenDown.chain(tweenAcross);
+	tweenAcross.chain(tweenUp);
+	tweenDown.start();
+};
+
 window.onload = function () {
 	initializeDraw();
 	$('#transact_button').click(function(e) {
@@ -120,8 +181,8 @@ var beginTransaction = function(client) {
 
 // NOTE: Don't forget case where there is no primary? Like querying within a view-change.
 var findPrimary = function(client) {
-	if (client.primary != null) 
-		return client.primary;
+	// if (client.primary != null) 
+	// 	return client.primary;
 
 	var activeServer = client.servers.find(function(server) {
 		return (server.status == "active");

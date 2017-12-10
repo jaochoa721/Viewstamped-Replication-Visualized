@@ -1,10 +1,10 @@
 /*jshint browser: true */
 'use strict';
 
-var HEARTBEAT_TIMEOUT = 5000;
-var MIN_LATENCY = 1000;
-var MAX_LATENCY = 2000;
-var VOTE_TIMEOUT = 6000;
+var HEARTBEAT_TIMEOUT = 5000 * 3;
+var MIN_LATENCY = 1000 * 3;
+var MAX_LATENCY = 1000 * 3 + 2000;
+var VOTE_TIMEOUT = 6000 * 2;
 var NUM_SERVERS = 4;
 var pendingMessages = [];
 
@@ -30,7 +30,11 @@ var sendMessage = function(src, dst, type, content) {
 	// var contentCopy = Object.assign({}, content);
 	var contentCopy = JSON.parse(JSON.stringify(content));
 	var m = new Message(src, dst, type, contentCopy);
-	m.deliverTime = $.now() + MIN_LATENCY + Math.random()*(MAX_LATENCY - MIN_LATENCY);
+	var rando = MIN_LATENCY + Math.random()*(MAX_LATENCY - MIN_LATENCY);
+	// console.log(rando, Math.random() * (MAX_LATENCY - MIN_LATENCY));
+	m.deliverTime = $.now() + rando;
+	// console.log(rando, m.deliverTime);
+	window.animateMessage(m);
 	pendingMessages.push(m);
 };
 
@@ -141,9 +145,15 @@ var isInView = function(server, peer) {
 
 var sendHeartbeats = function(server) {
 	server.outHeartbeats.forEach(function(heartbeatTime, peer) {
+		if (server.mymid == 0) {
+			console.log(peer, "-", heartbeatTime, heartbeatTime - $.now());
+		}
 		if (heartbeatTime <= $.now() + MAX_LATENCY) {
+			if (server.mymid == 0) {
+				console.log(peer, "-", "thinks its time to send/");
+			}
 			sendMessage(server.mymid, peer, "HEART", "");
-			server.outHeartbeats[peer] += HEARTBEAT_TIMEOUT;
+			server.outHeartbeats.set(peer, heartbeatTime + HEARTBEAT_TIMEOUT);
 		}
 	});
 };
@@ -360,6 +370,13 @@ var awaitView = function(server) {
 			server.cur_viewid = newViewId;
 			server.history = eventRecord.history;
 			server.status = "active";
+			server.inHeartbeats.forEach(function(time, peer, map) {
+				map.set(peer, $.now() + HEARTBEAT_TIMEOUT);
+			});
+			server.outHeartbeats.forEach(function(time, peer, map) {
+				map.set(peer, $.now());
+			});	
+			console.log("Server ",server.mymid, " has updated its heartbeats!");
 		}
 
 		if (m.type == "INITVIEW") {
@@ -452,7 +469,7 @@ var handleCommit = function(server) {
 var addToBuffer = function(server, record) {
 	server.timestamp += 1;
 	var viewstamp = {viewid: server.cur_viewid, ts: server.timestamp}
-	server.history.push(viewstamp);
+	server.history[server.history.length - 1].ts += 1;
 	// record: operation.
 	// 		   aid.
 	//		   viewstamp.
@@ -469,7 +486,7 @@ var updateHistory = function(server) {
 	server.messages = server.messages.filter(function(m){
 		if (m.type != "COPY")
 			return true;
-		server.history.push(m.content.viewstamp);
+		server.history[server.history.length - 1].ts += 1;
 		return false;
 	});
 };
