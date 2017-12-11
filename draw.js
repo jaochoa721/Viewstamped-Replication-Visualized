@@ -14,7 +14,7 @@ var initializeDraw = function() {
 		button.textContent = "Kill " + server.mymid; 
 		button.addEventListener("click", function(e) {
 			if (server.status == "stop") {
-				server.status = "active";
+				server.status = "crashed";
 				button.textContent = "Kill " + server.mymid;
 			}
 			else {
@@ -50,6 +50,25 @@ var makeTable = function(title, xLabel, yLabel, startIndex, map, xExtractor, yEx
 	});
 };
 
+var makeLog = function(title, xLabel, yLabel, startIndex, log, limit, bodyMap) {
+	var j = startIndex;
+	bodyMap[j] = title;
+	j++;
+	bodyMap[j] = " " + xLabel + " | " + yLabel;
+	j++;
+	bodyMap[j] = " ------------";
+	j++;
+	var prefix = "    ";
+	log.forEach(function(ele, i) {
+		if (i < log.length - limit)
+			return;
+
+		var extra = (ele.aid) ? " TXN" + ele.aid : "";
+		bodyMap[j] = prefix + i  + " | " + ele.operation + extra;
+		j += 1;
+	});
+};
+
 var normalizeTime = function(time) {
 	return (time - $.now()) / 1000;
 };
@@ -70,9 +89,12 @@ var drawServer = function(len, server) {
 				};
 
 	if (server.status == "active") {
-		var xExtractor = function(x) { return x; };
-		var timeExtractor = function(time) { return normalizeTime(time) + "s"; };
-		makeTable("Heartbeats", "peer", "time", 5, server.inHeartbeats, xExtractor, timeExtractor, bodyMap);
+		j = 5;
+
+		// var xExtractor = function(x) { return x; };
+		// var timeExtractor = function(time) { return normalizeTime(time) + "s"; };
+		// makeTable("Heartbeats", "peer", "time", 5, server.inHeartbeats, xExtractor, timeExtractor, bodyMap);
+		makeLog("Log", "Index", "Entry", 5, server.log, 5, bodyMap)
 	}
 
 	if (server.status == "view_manager") {

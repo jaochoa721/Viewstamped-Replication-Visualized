@@ -70,7 +70,8 @@ var createServer = function(id, groupid, configuration) {
 		messages: [],
 		invitations: null,
 		electionEnd: null,
-		history: [{viewid: [1, 1], ts: 1}]
+		history: [{viewid: [1, 1], ts: 1}],
+		log: []
 		// Is backup?
 		// Buffer. ?
 		// History. ?
@@ -88,7 +89,9 @@ var createClient = function(servers) {
 		status: "free",
 		workToDo: false,
 		timeout: null,
-		servers: servers
+		servers: servers,
+		attempts: 0,
+		primaryProbes: 0
 	};
 };
 
@@ -170,6 +173,11 @@ var makeAcceptance = function(server) {
 	return acceptance;
 };
 
+var handleCrash = function(server) {
+	server.up_to_date = false;
+	server.max_viewid = server.cur_viewid;
+};
+
 var startViewChange = function(server) {
 	server.status = "view_manager";
 	server.invitations = makeMap(server.configuration, null);
@@ -190,10 +198,10 @@ var startViewChange = function(server) {
 };
 
 var viewIdCompare = function(a, b) {
-	if (a[0] > b[0] || (a[0] == a[0] && a[1] > b[1]))
+	if (a[0] > b[0] || (a[0] == b[0] && a[1] > b[1]))
 		return -1;
 
-	if (a[0] < b[0] || (a[0] == a[0] && a[1] < b[1]))
+	if (a[0] < b[0] || (a[0] == b[0] && a[1] < b[1]))
 		return 1;
 
 	return 0;
@@ -307,6 +315,7 @@ var beginView = function(server, newView) {
 	server.cur_viewid = server.max_viewid;
 	server.cur_view = newView;
 	server.timestamp = 0;
+	server.log.push({viewid: server.cur_viewid, ts:0, operation: "New view"})
 	server.history.push({viewid: server.cur_viewid, ts:0});
 
 	server.inHeartbeats.forEach(function(time, peer, map) {
@@ -319,7 +328,7 @@ var beginView = function(server, newView) {
 		return m.type !== "HEART";
 	});	
 
-	var eventRecord = {cur_view: newView, history: server.history};
+	var eventRecord = {cur_view: newView, history: server.history, log: server.log};
 	newView.backups.forEach(function (peer) {
 		sendMessage(server.mymid, peer, "NEWVIEW", eventRecord);
 	});
@@ -336,6 +345,7 @@ var handleInvitation = function(server) {
 		
 		var proposedViewId = m.content;
 		if (viewIdCompare(proposedViewId, server.max_viewid) == -1) {
+			console.log("Server", server.mymid, "accepted Server", m.src, "because", proposedViewId, ">", server.max_viewid)
 			server.max_viewid = proposedViewId;
 			server.status = "underling";
 			server.electionEnd = $.now() + 2*VOTE_TIMEOUT;
@@ -375,6 +385,7 @@ var awaitView = function(server) {
 			server.cur_view = eventRecord.cur_view;
 			server.cur_viewid = newViewId;
 			server.history = eventRecord.history;
+			server.log = eventRecord.log;
 			server.status = "active";
 			server.inHeartbeats.forEach(function(time, peer, map) {
 				map.set(peer, $.now() + HEARTBEAT_TIMEOUT);
@@ -414,7 +425,7 @@ var handleBegin = function(server) {
 		if (m.type != "BEGIN")
 			return true;
 
-		var viewstamp = addToBuffer(server, {operation: 'completed-call', aid: m.content.aid})
+		var viewstamp = addToBuffer(server, 'completed-call', m.content.aid);
 		sendMessage(server.mymid, m.src, "BEGIN-ACK", {pset: viewstamp});
 		return false;
 	});
@@ -439,7 +450,7 @@ var handlePrepare = function(server) {
 
 		if (!compatible) {
 			sendMessage(server.mymid, m.src, "REFUSE", {aid: m.content.aid});
-			addToBuffer(server, {operation: 'aborted', aid: m.content.aid});
+			addToBuffer(server, 'aborted', m.content.aid);
 		} else {
 			// Assert that backups have ACK'd info.
 			var count = 0;
@@ -474,21 +485,30 @@ var handleCommit = function(server) {
 	server.messages = server.messages.filter(function(m){
 		if (m.type != "COMMIT")
 			return true;
-		addToBuffer(server, {operation: 'committed', aid: m.content.aid});
+		addToBuffer(server, 'committed', m.content.aid);
 		sendMessage(server.mymid, m.src, "DONE", {aid: m.content.aid});
 	});
 };
 
-var addToBuffer = function(server, record) {
+var handleAbort = function(server) {
+	server.messages = server.messages.filter(function(m){
+		if (m.type != "ABORT")
+			return true;
+		addToBuffer(server, 'aborted', m.content.aid);
+	});
+};
+
+var addToBuffer = function(server, operation, aid) {
 	server.timestamp += 1;
 	var viewstamp = {viewid: server.cur_viewid, ts: server.timestamp}
 	server.history[server.history.length - 1].ts += 1;
-	// record: operation.
-	// 		   aid.
-	//		   viewstamp.
-	record.viewstamp = viewstamp;
+
+	viewstamp.operation = operation;
+	viewstamp.aid = aid;
+	server.log.push(viewstamp)
+
 	server.cur_view.backups.forEach(function(backup) {
-		sendMessage(server.mymid, backup, "COPY", record);
+		sendMessage(server.mymid, backup, "COPY", viewstamp);
 	});
 	return viewstamp;
 }; 
@@ -499,6 +519,7 @@ var updateHistory = function(server) {
 	server.messages = server.messages.filter(function(m){
 		if (m.type != "COPY")
 			return true;
+		server.log.push(m.content);
 		server.history[server.history.length - 1].ts += 1;
 		return false;
 	});

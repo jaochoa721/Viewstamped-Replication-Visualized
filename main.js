@@ -6,6 +6,7 @@ var nodes = servers.concat(client);
 
 var i = 0;
 var stop = false;
+
 var runSystem = function() {
 	if (stop === true) 
 		return;
@@ -31,12 +32,17 @@ var runSystem = function() {
 			server.messages = [];
 			return;
 		}
+
+		if (server.status == "crashed") {
+			handleCrash(server);
+		}
+
 		var changeView = handleHeartbeats(server);
 		var voteExpired = awaitView(server);
 		var restartVote = retryElection(server);
 
-		if (changeView || voteExpired || restartVote)  {
-			console.log("Server ", server.mymid, "Heart:", changeView, "Vote:", voteExpired, "restartVote", restartVote);
+		if (changeView || voteExpired || restartVote || server.status == "crashed")  {
+			console.log("Server ", server.mymid, "Heart:", changeView, "Vote:", voteExpired, "restartVote", restartVote, "Crashed:", server.crashed);
 			startViewChange(server);
 		}
 
@@ -107,6 +113,9 @@ window.animateMessage = function(msg) {
 	arrowMessage.insertAfter("#container");
 
 	arrowMessage.css({position: 'absolute'});
+	if (msg.type === "HEART") {
+		arrowMessage.css({color:'red'});
+	}
 	// var source = 
 	var arrowPos = arrowMessage.position();
 	var srcPos = $('#' + src).offset();
@@ -194,6 +203,18 @@ window.onload = function () {
 var runClient = function(client) {
 	if (!client.workToDo) return;
 
+	client.primary = findPrimary(client);
+
+	if (client.primary == null) {
+		if (client.firstAttemptTime == null)
+			client.firstAttemptTime = $.now();
+
+		if ($.now() - client.firstAttemptTime >= 10000)
+			abortTransaction(client);
+		return;
+	}
+	client.firstAttemptTime = null;
+
 	if (client.status == "free") {
 		beginTransaction(client);
 	}
@@ -212,9 +233,9 @@ var runClient = function(client) {
 	}
 
 	if (client.status == "wait-prepare") {
-		var refused = awaitPrepare(client);
-		console.log("Did we prepare", refused);
-		if (refused) abort = true;
+		var res = awaitPrepare(client);
+		if (res < 0) abort = true;
+		if (res == 1) client.status = "prepare-ready";
 	}
 
 	if (client.status == "commit-ready") {
@@ -230,10 +251,10 @@ var runClient = function(client) {
 };
 
 var abortTransaction = function(client) {
-	var primary = findPrimary(client);
-	if (primary)
-		sendMessage(client.mymid, primary, "ABORT", { aid: client.lastTransaction });
+	if (client.primary)
+		sendMessage(client.mymid, client.primary, "ABORT", { aid: client.lastTransaction });
 	client.status = "free";
+	client.workToDo	= false;
 	$('#transact_button').prop("disabled", false).text("Begin TXN");
 };
 
@@ -241,17 +262,15 @@ var abortTransaction = function(client) {
 // Send it to primary.	
 var beginTransaction = function(client) {
 	client.lastTransaction += 1;
-	var primary = findPrimary(client);
+	var primary = client.primary;
 	sendMessage(client.mymid, primary, "BEGIN", { aid: client.lastTransaction });
 	client.status = "wait-ack";
 	client.timeout = $.now() + 2.5*MAX_LATENCY;
+	client.attempts = 0;
 };
 
 // NOTE: Don't forget case where there is no primary? Like querying within a view-change.
 var findPrimary = function(client) {
-	// if (client.primary != null) 
-	// 	return client.primary;
-
 	var activeServer = client.servers.find(function(server) {
 		return (server.status == "active");
 	});
@@ -263,7 +282,10 @@ var findPrimary = function(client) {
 }
 
 var prepareTransaction = function(client) {
-	sendMessage(client.mymid, client.primary, "PREPARE", {aid: client.lastTransaction, pset: client.viewstamp});
+	client.timeout = $.now() + 2.5*MAX_LATENCY;
+	client.attempts += 1;
+	var primary = client.primary;
+	sendMessage(client.mymid, primary, "PREPARE", {aid: client.lastTransaction, pset: client.viewstamp});
 	client.status = "wait-prepare";
 };
 
@@ -304,7 +326,20 @@ var awaitPrepare = function(client) {
 		$('#transact_button').text("Begin TXN").prop("disabled", false);
 		return false;
 	});
-	return refused;
+
+	// Timed out and third attempt.
+	if (client.timeout < $.now() && client.attempts == 3)
+		return -1;
+
+	// Primary aborted.
+	if (refused)
+		return -2;
+
+	// You can still try again.
+	if (client.timeout < $.now() && client.attempts < 3)
+		return 1;
+
+	return 0;
 };
 
 var awaitCommit = function(client) {
