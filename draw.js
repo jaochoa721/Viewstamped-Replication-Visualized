@@ -3,7 +3,24 @@ var showTimeouts = false;
 var showHeartbeats = true;
 var initializeDraw = function() {
 	$("#stop_button").click(function(e) {
+		if (stop) {
+			servers.forEach(function(server) {
+				server.inHeartbeats.forEach(function(time, k, map){
+					map.set(k, time + $.now() - stopTime);
+				});
+				server.outHeartbeats.forEach(function(time, k, map){
+					map.set(k, time + $.now() - stopTime);
+				});
+				server.electionEnd += $.now() - stopTime;
+				server.retryTime += $.now() - stopTime;
+			});
+
+			client.timeout += $.now() - stopTime;
+			client.firstAttemptTime += $.now() - stopTime;
+		}
+
 		stop = !stop;
+		stopTime = (stop) ? $.now() : null;
 		$(this).text((stop) ? "Resume" : "Pause");
 	});
 

@@ -6,7 +6,7 @@ var nodes = servers.concat(client);
 
 var i = 0;
 var stop = false;
-
+var stopTime = null;
 var runSystem = function() {
 	if (stop === true) 
 		return;
@@ -175,9 +175,9 @@ window.animateMessage = function(msg) {
 		ele.style.setProperty('left',srcPos.left + 10 + 'px');
 
 		var tweenDown = createTween({ x: srcPos.left + 10, y: srcPos.top + 200},
-								{ x: srcPos.left + 10, y: srcPos.top + 200 + space*(dest+1)},
+								{ x: srcPos.left + 10, y: destPos.top - 2*space},
 								timeUpDown, ele);
-		var tweenAcross = createTween({ x: srcPos.left + 10, y: srcPos.top + 200 + space *(dest+1) },
+		var tweenAcross = createTween({ x: srcPos.left + 10, y: destPos.top - 2*space },
 									{ x: destPos.left + 10, y: destPos.top - 2*space}, 
 									msg.deliverTime - $.now() - 1000, ele);
 
