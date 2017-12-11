@@ -1,1 +1,1 @@
-# 244Project
+Viewstamped Replication Visualizer
