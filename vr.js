@@ -34,7 +34,8 @@ var sendMessage = function(src, dst, type, content) {
 	// console.log(rando, Math.random() * (MAX_LATENCY - MIN_LATENCY));
 	m.deliverTime = $.now() + rando;
 	// console.log(rando, m.deliverTime);
-	window.animateMessage(m);
+	if (src !== 4 && dst !== 4)
+		window.animateMessage(m);
 	pendingMessages.push(m);
 };
 
@@ -133,7 +134,6 @@ var receiveHeartbeats = function(server) {
 	// Check if any heartbeats timers expired
 	server.inHeartbeats.forEach(function (time, peer) {
 		if (time < $.now() && isInView(server, peer))  {
-			console.log("Expected:", time, "True:", servers[peer].outHeartbeats.get(server.mymid));
 			changeView = true;
 		}
 	});
@@ -146,13 +146,7 @@ var isInView = function(server, peer) {
 
 var sendHeartbeats = function(server) {
 	server.outHeartbeats.forEach(function(heartbeatTime, peer) {
-		if (server.mymid == 0) {
-			console.log(peer, "-", heartbeatTime, heartbeatTime - $.now());
-		}
 		if (heartbeatTime <= $.now() + MAX_LATENCY + 2000) {
-			if (server.mymid == 0) {
-				console.log(peer, "-", "thinks its time to send/");
-			}
 			sendMessage(server.mymid, peer, "HEART", "");
 			server.outHeartbeats.set(peer, heartbeatTime + HEARTBEAT_TIMEOUT);
 		}
@@ -398,11 +392,9 @@ var awaitView = function(server) {
 	});
 
 	if (newviewReceived) {
-		console.log(server.messages);
 		server.messages = server.messages.filter(function (m) {
 			return m.type !== "HEART";
 		});	
-		console.log(server.messages);
 	}
 	if (!newviewReceived && server.electionEnd < $.now()) 
 		return true;
@@ -446,7 +438,7 @@ var handlePrepare = function(server) {
 		});
 
 		if (!compatible) {
-			sendMessage(server.mymid, m.src, "ABORT", {aid: m.content.aid});
+			sendMessage(server.mymid, m.src, "REFUSE", {aid: m.content.aid});
 			addToBuffer(server, {operation: 'aborted', aid: m.content.aid});
 		} else {
 			// Assert that backups have ACK'd info.
@@ -469,8 +461,10 @@ var handlePrepare = function(server) {
 
 			if (count > Math.floor(server.configuration.length/2))
 				sendMessage(server.mymid, m.src, "PREPARED", {aid: m.content.aid});
-			else
+			else {
 				console.log("oh no, not everyone has the copy. We'll try later.");
+				return true;
+			}
 		}
 		return false;
 	});
