@@ -111,9 +111,14 @@ window.animateMessage = function(msg) {
 	var msgText = (msg.type == "HEART") ? "♥" : msg.type;
 	// var msgText = (msg.type == "INVITE") ? "I" : msgText;
 	var arrowMessage = $('<pre id="message' + msgCounter + '">' + msgText + '</pre>');
+
+	if (msg.type == "HEART") {
+		arrowMessage.attr("class", "heart");
+	}
+
 	arrowMessage.insertAfter("#container");
 
-	arrowMessage.css({position: 'absolute'});
+	arrowMessage.css({position: 'absolute', "display": ((showHeartbeats || msg.type !== "HEART") ? "initial" : "none")});
 	if (msg.type === "HEART") {
 		arrowMessage.css({color:'red'});
 	}
@@ -253,7 +258,7 @@ var abortTransaction = function(client) {
 		sendMessage(client.mymid, client.primary, "ABORT", { aid: client.lastTransaction });
 	client.status = "free";
 	client.workToDo	= false;
-	client.log.push({operation: "aborted", aid: client.lastTransaction});
+	client.log.push({operation: "aborted  ", aid: client.lastTransaction});
 	$('#transact_button').prop("disabled", false).text("Begin TXN");
 };
 
@@ -290,7 +295,7 @@ var prepareTransaction = function(client) {
 
 var commitTransaction = function(client) {
 	sendMessage(client.mymid, client.primary, "COMMIT", {aid: client.lastTransaction, pset: client.viewstamp});
-	client.log.push({operation: "committing", aid: client.lastTransaction});
+	client.log.push({operation: "committed", aid: client.lastTransaction, viewid: client.viewstamp.viewid, ts: client.viewstamp.ts});
 	client.unackedTxns.set(client.lastTransaction, {pset: client.viewstamp, timeout: $.now() + 2.5*MAX_LATENCY});
 	client.status = "free";
 	client.workToDo = false;
@@ -368,7 +373,7 @@ var awaitCommit = function(client) {
 		var res = client.unackedTxns.get(m.content.aid);
 		if (res) {
 			client.unackedTxns.delete(m.content.aid);
-			client.log.push({aid: m.content.aid, operation:"done"});
+			client.log.push({aid: m.content.aid, operation:"done     "});
 		}
 		return false;
 	});	

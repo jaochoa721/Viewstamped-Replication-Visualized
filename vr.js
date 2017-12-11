@@ -431,7 +431,7 @@ var handleBegin = function(server) {
 			return false;
 		}
 
-		var viewstamp = addToBuffer(server, 'completed-call', m.content.aid);
+		var viewstamp = addToBuffer(server, 'cmplt-call', m.content.aid);
 		sendMessage(server.mymid, m.src, "BEGIN-ACK", {pset: viewstamp, aid : m.content.aid});
 		return false;
 	});
@@ -456,7 +456,7 @@ var handlePrepare = function(server) {
 
 		if (!compatible) {
 			sendMessage(server.mymid, m.src, "REFUSE", {aid: m.content.aid});
-			addToBuffer(server, 'aborted', m.content.aid);
+			addToBuffer(server, 'aborted   ', m.content.aid);
 		} else {
 			// Assert that backups have ACK'd info.
 			var count = 0;
@@ -491,7 +491,7 @@ var handleCommit = function(server) {
 	server.messages = server.messages.filter(function(m){
 		if (m.type != "COMMIT")
 			return true;
-		addToBuffer(server, 'committed', m.content.aid);
+		addToBuffer(server, 'committed ', m.content.aid);
 		sendMessage(server.mymid, m.src, "DONE", {aid: m.content.aid});
 	});
 };
@@ -500,7 +500,7 @@ var handleAbort = function(server) {
 	server.messages = server.messages.filter(function(m){
 		if (m.type != "ABORT")
 			return true;
-		addToBuffer(server, 'aborted', m.content.aid);
+		addToBuffer(server, 'aborted   ', m.content.aid);
 	});
 };
 

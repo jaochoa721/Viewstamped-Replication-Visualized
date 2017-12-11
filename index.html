@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <title>Viewstamp Replication</title>
+    <title>Viewstamped Replication</title>
     <script src="jquery-3.2.1.min.js"></script>
     <script src="Tween.min.js"></script>
     <script src="draw.js"></script>
@@ -11,9 +11,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/16.3.5/Tween.min.js"></script>
   </head>
   <body>
+    <h1></h1>
     <div id="buttons">
+      <h2>Viewstamped Replication Visualizer</h2>
       <button type="button" id="stop_button"> Stop </button>
       <button type="button" id="transact_button"> Begin TXN </button>
+      <button type="button" id="show_timeouts"> Show Timeouts </button>
+      <button type="button" id="show_heartbeats"> Hide Heartbeats </button>
     </div>
     <div id="container">
     </div>

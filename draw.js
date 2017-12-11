@@ -1,9 +1,24 @@
 
+var showTimeouts = false;
+var showHeartbeats = true;
 var initializeDraw = function() {
 	$("#stop_button").click(function(e) {
 		stop = !stop;
 		$(this).text((stop) ? "Resume" : "Pause");
 	});
+
+
+	$('#show_timeouts').click(function(e) {
+		showTimeouts = !showTimeouts;
+		$(this).text((showTimeouts) ? "Show Log" : "Show Timeouts")
+	});
+
+	$('#show_heartbeats').click(function(e){
+		showHeartbeats = !showHeartbeats;
+		$('.heart').css("display", (showHeartbeats) ? "initial" : "none");
+		$(this).text((showHeartbeats) ? "Hide Heartbeats" : "Show Heartbeats")
+	});
+
 	servers.forEach(function(server)  {
 		var preElement = document.createElement("pre");
 		preElement.id = server.mymid;
@@ -31,7 +46,6 @@ var initializeDraw = function() {
 	preElement.id = client.mymid;
 	$(preElement).insertAfter("#messageArea");
 	preElement.style.position = "absolute";
-	preElement.style.setProperty('left', 330 + "px");
 
 }
 
@@ -50,21 +64,22 @@ var makeTable = function(title, xLabel, yLabel, startIndex, map, xExtractor, yEx
 	});
 };
 
-var makeLog = function(title, xLabel, yLabel, startIndex, log, limit, bodyMap) {
+var makeLog = function(xLabel, yLabel, startIndex, log, limit, bodyMap) {
 	var j = startIndex;
-	bodyMap[j] = title;
+
 	j++;
-	bodyMap[j] = " " + xLabel + " | " + yLabel;
+	bodyMap[j] = "    " + xLabel + "  | " + yLabel;
 	j++;
-	bodyMap[j] = " ------------";
+	bodyMap[j] = " ---------------------";
 	j++;
 	var prefix = "     ";
 	log.forEach(function(ele, i) {
 		if (i < log.length - limit)
 			return;
 
-		var extra = (ele.aid) ? " TXN" + ele.aid : "";
-		bodyMap[j] = prefix + i  + " | " + ele.operation + extra;
+		var extra = (typeof ele.aid !== 'undefined') ? " TXN" + ele.aid : "";
+
+		bodyMap[j] = ((typeof ele.viewid !== 'undefined') ? ("(" + ele.viewid + ") " + ele.ts) : "    -  ") + " | " + ele.operation + extra;
 		j += 1;
 	});
 };
@@ -74,6 +89,15 @@ var normalizeTime = function(time) {
 };
 
 var drawServer = function(len, server) {
+	if (server.status == "active" && server.cur_view.primary == server.mymid) {
+		$('#' + server.mymid).css({"background-color": "bisque"});
+	} else if (server.status == "stop" || server.status == "crashed"){
+		$('#' + server.mymid).css({"background-color": "LightGray"});
+	} else {
+		$('#' + server.mymid).css({"background-color": "white"});
+	}
+
+
 	var firstLine = " ";
 	for (var i = 0; i < len-2; i++) {
 		firstLine += "-";
@@ -89,21 +113,13 @@ var drawServer = function(len, server) {
 				};
 
 	if (server.status == "active") {
-		j = 5;
-		var dangerNodes = " ";
-		server.inHeartbeats.forEach(function(time, node) {
-			if ($.now() + HEARTBEAT_TIMEOUT/5.0 >= time)
-				if (dangerNodes.length == 1)
-					dangerNodes += node;
-				else
-					dangerNodes += ", " + node;
-		});
-		if (dangerNodes.length > 1)
-			bodyMap[4] = "Danger Nodes:" + dangerNodes
-		// var xExtractor = function(x) { return x; };
-		// var timeExtractor = function(time) { return normalizeTime(time) + "s"; };
-		// makeTable("Heartbeats", "peer", "time", 5, server.inHeartbeats, xExtractor, timeExtractor, bodyMap);
-		makeLog("Log", "Index", "Entry", 5, server.log, 5, bodyMap)
+		if (!showTimeouts)
+			makeLog("VS", "Log Entry", 5, server.log, 5, bodyMap)
+		else {
+			var xExtractor = function(x) { return x; };
+			var timeExtractor = function(time) { return normalizeTime(time) + "s"; };
+			makeTable("Heartbeat Timeouts", "Peer", "Time", 5, server.inHeartbeats, xExtractor, timeExtractor, bodyMap);
+		}
 	}
 
 	if (server.status == "view_manager") {
@@ -143,6 +159,7 @@ var drawServer = function(len, server) {
 window.drawServer = drawServer;
 
 var drawClient = function(len, client) {
+
 	var firstLine = " ";
 	for (var i = 0; i < len-2; i++) {
 		firstLine += "-";
@@ -154,35 +171,10 @@ var drawClient = function(len, client) {
 					0: "Client - ID: " + client.mymid ,
 					1: "Status: " + client.status,  
 				   	2: "Last Txn: " + client.lastTransaction,
-				   	3: "Cur View: " + client.viewid,
+				   	3: "Last View: (" + client.viewid  + ")"
 				};
 
-	// if (server.status == "active") {
-	// 	var xExtractor = function(x) { return x; };
-	// 	var timeExtractor = function(time) { return normalizeTime(time) + "s"; };
-	// 	makeTable("Heartbeats", "peer", "time", 5, server.inHeartbeats, xExtractor, timeExtractor, bodyMap);
-	// }
-
-	// if (server.status == "view_manager") {
-	// 	j = 5;
-	// 	bodyMap[j] = "Election Ends: " + normalizeTime(server.electionEnd) + "s";
-
-	// 	var xExtractor = function(x) { return x; };
-	// 	var inviteExtractor = function(acceptance) {
-	// 		if (acceptance != null) {
-	// 			return "yes";
-	// 		}
-	// 		return "not yet";
-	// 	};
-	// 	makeTable("Invitations", "peer", "accepted?", j + 1, server.invitations, xExtractor, inviteExtractor, bodyMap);
-	// }
-
-	// if (server.status == "underling") {
-	// 	j = 5;
-	// 	bodyMap[j] = "Election Ends: " + normalizeTime(server.electionEnd) + "s";
-	// }
-
-	makeLog("Log", "Index", "Entry", 5, client.log, 5, bodyMap)
+	makeLog("VS", "Log Entry", 5, client.log, 5, bodyMap)
 
 	for (i = 0; i < (len/2)-2; i++) {
 		body += "|";
@@ -197,6 +189,9 @@ var drawClient = function(len, client) {
 	}
 
 	document.getElementById(client.mymid).innerHTML = firstLine + body + firstLine;
+	var serverWidth = $("#0").width()
+	var containerWidth = serverWidth * (NUM_SERVERS)
+	$("#" + NUM_SERVERS).css({'left': ((containerWidth/2) - serverWidth/2) +"px"});
 }
 
 window.drawClient = drawClient;
