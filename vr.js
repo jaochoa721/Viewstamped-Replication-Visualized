@@ -34,8 +34,8 @@ var sendMessage = function(src, dst, type, content) {
 	// console.log(rando, Math.random() * (MAX_LATENCY - MIN_LATENCY));
 	m.deliverTime = $.now() + rando;
 	// console.log(rando, m.deliverTime);
-	if (src !== 4 && dst !== 4)
-		window.animateMessage(m);
+	// if (src !== 4 && dst !== 4)
+	window.animateMessage(m);
 	pendingMessages.push(m);
 };
 
