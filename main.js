@@ -82,7 +82,6 @@ for (var i = 0; i < servers.length; ++i) {
 var msgCounter = 0;
 
 var createTween = function(srcPos, destPos, delay, elem) {
-	// console.log("Start Src:", srcPos);
 	var coords = srcPos; // Start at (0, 0)
 	var tween = new TWEEN.Tween(coords) // Create a new tween that modifies 'coords'.
 	        .to(destPos, delay) // Move to (300, 200) in 1 second.
@@ -118,12 +117,6 @@ window.animateMessage = function(msg) {
 	var tweenDown = createTween({ x: srcPos.left + 10, y: srcPos.top + 200},
 							{ x: srcPos.left + 10, y: srcPos.top + 200 + space*(dest+1)},
 							500, ele);
-	if (msg.type === "INVITE") {
-		console.log(space, dest, space*dest, srcPos.top + 200 + space * (dest+1));
-		console.log("Invite with dst pos: ",  {x: srcPos.left + 10, y: srcPos.top + 200 + space*(dest+1)})
-	}
-
-	// console.log({ x: srcPos.left + 30, y: srcPos.top})
 
 	var tweenAcross = createTween({ x: srcPos.left + 10, y: srcPos.top + 200 + space *(dest+1) },
 								{ x: destPos.left + 10, y: destPos.top + 200 + space*(dest+1) }, 
@@ -163,8 +156,10 @@ var runClient = function(client) {
 	// Await an ACK.
 	// 		On Ack: Allow Client to Commit.
 	//		On Timeout: Abort? or Retry?
+	var abort = false;
 	if (client.status == "wait-ack") {
-		awaitAck(client)
+		var result = awaitAck(client)
+		if (result == -1) abort = true;
 	}
 
 	if (client.status == "prepare-ready") {
@@ -172,7 +167,9 @@ var runClient = function(client) {
 	}
 
 	if (client.status == "wait-prepare") {
-		awaitPrepare(client);
+		var refused = awaitPrepare(client);
+		console.log("Did we prepare", refused);
+		if (refused) abort = true;
 	}
 
 	if (client.status == "commit-ready") {
@@ -182,6 +179,17 @@ var runClient = function(client) {
 	if (client.status == "wait-commit") {
 		awaitCommit(client);
 	}
+
+	if (abort)
+		abortTransaction(client);
+};
+
+var abortTransaction = function(client) {
+	var primary = findPrimary(client);
+	if (primary)
+		sendMessage(client.mymid, primary, "ABORT", { aid: client.lastTransaction });
+	client.status = "free";
+	$('#transact_button').prop("disabled", false).text("Begin TXN");
 };
 
 // Create a transaction.
@@ -189,8 +197,9 @@ var runClient = function(client) {
 var beginTransaction = function(client) {
 	client.lastTransaction += 1;
 	var primary = findPrimary(client);
-	sendMessage(client.mymid, primary, "BEGIN", { aid: client.lastTransaction })
-	client.status = "wait-ack"
+	sendMessage(client.mymid, primary, "BEGIN", { aid: client.lastTransaction });
+	client.status = "wait-ack";
+	client.timeout = $.now() + 2.5*MAX_LATENCY;
 };
 
 // NOTE: Don't forget case where there is no primary? Like querying within a view-change.
@@ -220,26 +229,37 @@ var commitTransaction = function(client) {
 };
 
 var awaitAck = function(client) {
+	var ackDelivered = false;
 	client.messages = client.messages.filter(function(m) {
 		if (m.type != "BEGIN-ACK")
 			return true;
 		// Confirm that txn is for you?
+		ackDelivered = true;
 		client.viewstamp = m.content.pset;
 		client.status = "ready";
 		$('#transact_button').prop("disabled", false).text("Commit TXN");
 		return false;
 	});
+	if (!ackDelivered && client.timeout < $.now())
+		return -1;
+	return 0;
 };
 
 var awaitPrepare = function(client) {
+	var refused = false; 
 	client.messages = client.messages.filter(function(m) {
-		if (m.type != "PREPARED")
+		if (m.type != "PREPARED" && m.type != "REFUSE")
 			return true;
 		// Confirm that txn is for you?
-		client.status = "commit-ready"
+		if (m.type == "PREPARED") {
+			client.status = "commit-ready"
+		} else {
+			refused = true;
+		}
 		$('#transact_button').text("Begin TXN").prop("disabled", false);
 		return false;
 	});
+	return refused;
 };
 
 var awaitCommit = function(client) {
