@@ -23,8 +23,16 @@ var initializeDraw = function() {
 			}
 		});
 		$("#buttons").append(button)
+		// var iter = document.createElement("pre");
+		
 		// document.body.appendChild(button);
 	});
+	var preElement = document.createElement("pre");
+	preElement.id = client.mymid;
+	$(preElement).insertAfter("#messageArea");
+	preElement.style.position = "absolute";
+	preElement.style.setProperty('left', 330 + "px");
+
 }
 
 var makeTable = function(title, xLabel, yLabel, startIndex, map, xExtractor, yExtractor, bodyMap) {
@@ -102,3 +110,59 @@ var drawServer = function(len, server) {
 }
 
 window.drawServer = drawServer;
+
+var drawClient = function(len, client) {
+	var firstLine = " ";
+	for (var i = 0; i < len-2; i++) {
+		firstLine += "-";
+	}
+	firstLine += " \n";
+
+	var body = "";
+	var bodyMap = {
+					0: "Client - ID: " + client.mymid ,
+					1: "Status: " + client.status,  
+				   	2: "Last Txn: " + client.lastTransaction,
+				};
+
+	// if (server.status == "active") {
+	// 	var xExtractor = function(x) { return x; };
+	// 	var timeExtractor = function(time) { return normalizeTime(time) + "s"; };
+	// 	makeTable("Heartbeats", "peer", "time", 5, server.inHeartbeats, xExtractor, timeExtractor, bodyMap);
+	// }
+
+	// if (server.status == "view_manager") {
+	// 	j = 5;
+	// 	bodyMap[j] = "Election Ends: " + normalizeTime(server.electionEnd) + "s";
+
+	// 	var xExtractor = function(x) { return x; };
+	// 	var inviteExtractor = function(acceptance) {
+	// 		if (acceptance != null) {
+	// 			return "yes";
+	// 		}
+	// 		return "not yet";
+	// 	};
+	// 	makeTable("Invitations", "peer", "accepted?", j + 1, server.invitations, xExtractor, inviteExtractor, bodyMap);
+	// }
+
+	// if (server.status == "underling") {
+	// 	j = 5;
+	// 	bodyMap[j] = "Election Ends: " + normalizeTime(server.electionEnd) + "s";
+	// }
+
+	for (i = 0; i < (len/3)-2; i++) {
+		body += "|";
+		var inserted = "";
+		if (bodyMap[i])
+			inserted = bodyMap[i]
+
+		body += inserted
+		for (var j = inserted.length; j < len-2; j++)
+			body += " ";
+		body += "|\n";
+	}
+
+	document.getElementById(client.mymid).innerHTML = firstLine + body + firstLine;
+}
+
+window.drawClient = drawClient;

@@ -20,6 +20,9 @@ var runSystem = function() {
 			window.drawServer(30, server);
 		});
 	}
+	if (window.drawClient) {
+		window.drawClient(30, client);
+	}
 
 	runClient(client);
 
@@ -111,32 +114,67 @@ window.animateMessage = function(msg) {
 	var destPos = $('#' + dest).offset();
 	// console.log(srcPos, destPos)
 	var ele = arrowMessage.get(0);
-	ele.style.setProperty('top',srcPos.top  + 200 + 'px');
-	ele.style.setProperty('left',srcPos.left + 10 + 'px');
-
 	var space = 20;
-	var tweenDown = createTween({ x: srcPos.left + 10, y: srcPos.top + 200},
-							{ x: srcPos.left + 10, y: srcPos.top + 200 + space*(dest+1)},
-							500, ele);
-	if (msg.type === "INVITE") {
-		console.log(space, dest, space*dest, srcPos.top + 200 + space * (dest+1));
-		console.log("Invite with dst pos: ",  {x: srcPos.left + 10, y: srcPos.top + 200 + space*(dest+1)})
+	var timeUpDown = 250;
+	if (msg.src !== client.mymid && msg.dst !== client.mymid) {
+		ele.style.setProperty('top',srcPos.top  + 200 + 'px');
+		ele.style.setProperty('left',srcPos.left + 10 + 'px');
+
+		var tweenDown = createTween({ x: srcPos.left + 10, y: srcPos.top + 200},
+								{ x: srcPos.left + 10, y: srcPos.top + 200 + space*(dest+1)},
+								timeUpDown, ele);
+		var tweenAcross = createTween({ x: srcPos.left + 10, y: srcPos.top + 200 + space *(dest+1) },
+									{ x: destPos.left + 10, y: destPos.top + 200 + space*(dest+1) }, 
+									msg.deliverTime - $.now() - 1000, ele);
+
+		var tweenUp = createTween({ x: destPos.left + 10, y: destPos.top + 200 + space*(dest+1)},
+								{ x: destPos.left + 10, y: destPos.top + 200},
+								timeUpDown, ele);
+		tweenUp.onComplete(function() { arrowMessage.remove(); });
+
+		tweenDown.chain(tweenAcross);
+		tweenAcross.chain(tweenUp);
+		tweenDown.start();
+	} else if (msg.src === client.mymid) {
+		ele.style.setProperty('top',srcPos.top - space +'px');
+		ele.style.setProperty('left',srcPos.left + 10 + 'px');
+
+		var tweenDown = createTween({ x: srcPos.left + 10, y: srcPos.top - space },
+								{ x: srcPos.left + 10, y: srcPos.top - 2*space},
+								timeUpDown, ele);
+
+		var tweenAcross = createTween({ x: srcPos.left + 10, y: srcPos.top - 2*space },
+									{ x: destPos.left + 10, y: destPos.top + 200 + space*(dest+1)  }, 
+									msg.deliverTime - $.now() - 1000, ele);
+
+		var tweenUp = createTween({ x: destPos.left + 10, y: destPos.top + 200 + space*(dest+1) },
+								{ x: destPos.left + 10, y: destPos.top + 200  },
+								timeUpDown, ele);
+		tweenUp.onComplete(function() { arrowMessage.remove(); });
+
+		tweenDown.chain(tweenAcross);
+		tweenAcross.chain(tweenUp);
+		tweenDown.start();
+	} else if (msg.dst === client.mymid) {
+		ele.style.setProperty('top',srcPos.top  + 200 + 'px');
+		ele.style.setProperty('left',srcPos.left + 10 + 'px');
+
+		var tweenDown = createTween({ x: srcPos.left + 10, y: srcPos.top + 200},
+								{ x: srcPos.left + 10, y: srcPos.top + 200 + space*(dest+1)},
+								timeUpDown, ele);
+		var tweenAcross = createTween({ x: srcPos.left + 10, y: srcPos.top + 200 + space *(dest+1) },
+									{ x: destPos.left + 10, y: destPos.top - 2*space}, 
+									msg.deliverTime - $.now() - 1000, ele);
+
+		var tweenUp = createTween({ x: destPos.left + 10, y: destPos.top - 2*space},
+								{ x: destPos.left + 10, y: destPos.top - space},
+								timeUpDown, ele);
+		tweenUp.onComplete(function() { arrowMessage.remove(); });
+
+		tweenDown.chain(tweenAcross);
+		tweenAcross.chain(tweenUp);
+		tweenDown.start();
 	}
-
-	// console.log({ x: srcPos.left + 30, y: srcPos.top})
-
-	var tweenAcross = createTween({ x: srcPos.left + 10, y: srcPos.top + 200 + space *(dest+1) },
-								{ x: destPos.left + 10, y: destPos.top + 200 + space*(dest+1) }, 
-								msg.deliverTime - $.now() - 1000, ele);
-
-	var tweenUp = createTween({ x: destPos.left + 10, y: destPos.top + 200 + space*(dest+1)},
-							{ x: destPos.left + 10, y: destPos.top + 200},
-							500, ele);
-	tweenUp.onComplete(function() { arrowMessage.remove(); });
-
-	tweenDown.chain(tweenAcross);
-	tweenAcross.chain(tweenUp);
-	tweenDown.start();
 };
 
 window.onload = function () {

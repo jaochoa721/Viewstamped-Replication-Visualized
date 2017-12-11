@@ -1,10 +1,10 @@
 /*jshint browser: true */
 'use strict';
 
-var HEARTBEAT_TIMEOUT = 5000 * 3;
-var MIN_LATENCY = 1000 * 3;
-var MAX_LATENCY = 1000 * 3 + 2000;
-var VOTE_TIMEOUT = 6000 * 2;
+var HEARTBEAT_TIMEOUT = 5000;
+var MIN_LATENCY = 1000 ;
+var MAX_LATENCY = 1000 + 2000;
+var VOTE_TIMEOUT = 6000 ;
 var NUM_SERVERS = 4;
 var pendingMessages = [];
 
