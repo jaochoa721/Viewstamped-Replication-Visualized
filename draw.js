@@ -14,7 +14,7 @@ var initializeDraw = function() {
 		button.textContent = "Kill " + server.mymid; 
 		button.addEventListener("click", function(e) {
 			if (server.status == "stop") {
-				server.status = "active";
+				server.status = "crashed";
 				button.textContent = "Kill " + server.mymid;
 			}
 			else {
@@ -50,6 +50,25 @@ var makeTable = function(title, xLabel, yLabel, startIndex, map, xExtractor, yEx
 	});
 };
 
+var makeLog = function(title, xLabel, yLabel, startIndex, log, limit, bodyMap) {
+	var j = startIndex;
+	bodyMap[j] = title;
+	j++;
+	bodyMap[j] = " " + xLabel + " | " + yLabel;
+	j++;
+	bodyMap[j] = " ------------";
+	j++;
+	var prefix = "     ";
+	log.forEach(function(ele, i) {
+		if (i < log.length - limit)
+			return;
+
+		var extra = (ele.aid) ? " TXN" + ele.aid : "";
+		bodyMap[j] = prefix + i  + " | " + ele.operation + extra;
+		j += 1;
+	});
+};
+
 var normalizeTime = function(time) {
 	return (time - $.now()) / 1000;
 };
@@ -63,16 +82,28 @@ var drawServer = function(len, server) {
 
 	var body = "";
 	var bodyMap = {
-					0: "ID: " + server.mymid + ((server.mymid !== server.cur_view.primary) ? "" : " - Primary"),
+					0: "ID: " + server.mymid + ((server.mymid !== server.cur_view.primary || server.status !== "active") ? "" : " - Primary"),
 					1: "Status: " + server.status,  
 				   	2: "Cur View: (" + server.cur_viewid[0] + ", " + server.cur_viewid[1] + ")",
 				   	3: "Max View: (" + server.max_viewid[0] + ", " + server.max_viewid[1] + ")",
 				};
 
 	if (server.status == "active") {
-		var xExtractor = function(x) { return x; };
-		var timeExtractor = function(time) { return normalizeTime(time) + "s"; };
-		makeTable("Heartbeats", "peer", "time", 5, server.inHeartbeats, xExtractor, timeExtractor, bodyMap);
+		j = 5;
+		var dangerNodes = " ";
+		server.inHeartbeats.forEach(function(time, node) {
+			if ($.now() + HEARTBEAT_TIMEOUT/5.0 >= time)
+				if (dangerNodes.length == 1)
+					dangerNodes += node;
+				else
+					dangerNodes += ", " + node;
+		});
+		if (dangerNodes.length > 1)
+			bodyMap[4] = "Danger Nodes:" + dangerNodes
+		// var xExtractor = function(x) { return x; };
+		// var timeExtractor = function(time) { return normalizeTime(time) + "s"; };
+		// makeTable("Heartbeats", "peer", "time", 5, server.inHeartbeats, xExtractor, timeExtractor, bodyMap);
+		makeLog("Log", "Index", "Entry", 5, server.log, 5, bodyMap)
 	}
 
 	if (server.status == "view_manager") {
@@ -123,6 +154,7 @@ var drawClient = function(len, client) {
 					0: "Client - ID: " + client.mymid ,
 					1: "Status: " + client.status,  
 				   	2: "Last Txn: " + client.lastTransaction,
+				   	3: "Cur View: " + client.viewid,
 				};
 
 	// if (server.status == "active") {
@@ -150,7 +182,9 @@ var drawClient = function(len, client) {
 	// 	bodyMap[j] = "Election Ends: " + normalizeTime(server.electionEnd) + "s";
 	// }
 
-	for (i = 0; i < (len/3)-2; i++) {
+	makeLog("Log", "Index", "Entry", 5, client.log, 5, bodyMap)
+
+	for (i = 0; i < (len/2)-2; i++) {
 		body += "|";
 		var inserted = "";
 		if (bodyMap[i])
