@@ -58,7 +58,7 @@ var makeLog = function(title, xLabel, yLabel, startIndex, log, limit, bodyMap) {
 	j++;
 	bodyMap[j] = " ------------";
 	j++;
-	var prefix = "    ";
+	var prefix = "     ";
 	log.forEach(function(ele, i) {
 		if (i < log.length - limit)
 			return;
@@ -90,7 +90,16 @@ var drawServer = function(len, server) {
 
 	if (server.status == "active") {
 		j = 5;
-
+		var dangerNodes = " ";
+		server.inHeartbeats.forEach(function(time, node) {
+			if ($.now() + HEARTBEAT_TIMEOUT/5.0 >= time)
+				if (dangerNodes.length == 1)
+					dangerNodes += node;
+				else
+					dangerNodes += ", " + node;
+		});
+		if (dangerNodes.length > 1)
+			bodyMap[4] = "Danger Nodes:" + dangerNodes
 		// var xExtractor = function(x) { return x; };
 		// var timeExtractor = function(time) { return normalizeTime(time) + "s"; };
 		// makeTable("Heartbeats", "peer", "time", 5, server.inHeartbeats, xExtractor, timeExtractor, bodyMap);
@@ -173,7 +182,9 @@ var drawClient = function(len, client) {
 	// 	bodyMap[j] = "Election Ends: " + normalizeTime(server.electionEnd) + "s";
 	// }
 
-	for (i = 0; i < (len/3)-2; i++) {
+	makeLog("Log", "Index", "Entry", 5, client.log, 5, bodyMap)
+
+	for (i = 0; i < (len/2)-2; i++) {
 		body += "|";
 		var inserted = "";
 		if (bodyMap[i])

@@ -68,6 +68,7 @@ var runSystem = function() {
 			updateHistory(server);
 			handlePrepare(server);
 			handleCommit(server);
+			handleAbort(server);
 		}
 	});
 };
@@ -200,10 +201,11 @@ window.onload = function () {
 	});
 }
 
-var runClient = function(client) {
+var runClient = function(client) {		
+	client.primary = findPrimary(client);
+	awaitCommit(client);
 	if (!client.workToDo) return;
 
-	client.primary = findPrimary(client);
 
 	if (client.primary == null) {
 		if (client.firstAttemptTime == null)
@@ -242,10 +244,6 @@ var runClient = function(client) {
 		commitTransaction(client);
 	}
 
-	if (client.status == "wait-commit") {
-		awaitCommit(client);
-	}
-
 	if (abort)
 		abortTransaction(client);
 };
@@ -255,6 +253,7 @@ var abortTransaction = function(client) {
 		sendMessage(client.mymid, client.primary, "ABORT", { aid: client.lastTransaction });
 	client.status = "free";
 	client.workToDo	= false;
+	client.log.push({operation: "aborted", aid: client.lastTransaction});
 	$('#transact_button').prop("disabled", false).text("Begin TXN");
 };
 
@@ -291,6 +290,8 @@ var prepareTransaction = function(client) {
 
 var commitTransaction = function(client) {
 	sendMessage(client.mymid, client.primary, "COMMIT", {aid: client.lastTransaction, pset: client.viewstamp});
+	client.log.push({operation: "committing", aid: client.lastTransaction});
+	client.unackedTxns.set(client.lastTransaction, {pset: client.viewstamp, timeout: $.now() + 2.5*MAX_LATENCY});
 	client.status = "free";
 	client.workToDo = false;
 };
@@ -301,7 +302,7 @@ var awaitAck = function(client) {
 	client.messages = client.messages.filter(function(m) {
 		if (m.type != "BEGIN-ACK" && m.type != "UPDATE-VIEW")
 			return true;
-		// Confirm that txn is for you?
+		// Confirm that txn is for you
 		if (m.content.aid !== client.lastTransaction) {
 			return false;
 		}
@@ -361,5 +362,22 @@ var awaitPrepare = function(client) {
 };
 
 var awaitCommit = function(client) {
-
+	client.messages = client.messages.filter(function(m) {
+		if (m.type != "DONE") 
+			return true;
+		var res = client.unackedTxns.get(m.content.aid);
+		if (res) {
+			client.unackedTxns.delete(m.content.aid);
+			client.log.push({aid: m.content.aid, operation:"done"});
+		}
+		return false;
+	});	
+	client.unackedTxns.forEach(function(val, key, map) {
+		if ($.now() >= val.timeout) {
+			if (client.primary) {
+				sendMessage(client.mymid, client.primary, "COMMIT", {aid: key, pset: val.pset});
+				val.timeout = $.now() + 2.5 * MAX_LATENCY;
+			}
+		}
+	});
 };

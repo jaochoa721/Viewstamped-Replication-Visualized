@@ -5,7 +5,7 @@ var HEARTBEAT_TIMEOUT = 5000;
 var MIN_LATENCY = 1000 ;
 var MAX_LATENCY = 1000 + 2000;
 var VOTE_TIMEOUT = 6000 ;
-var NUM_SERVERS = 4;
+var NUM_SERVERS = 5;
 var pendingMessages = [];
 
 function Message (src, dst, type, content) {
@@ -82,14 +82,16 @@ var createClient = function(servers) {
 		mymid: NUM_SERVERS,
 		messages: [],
 		viewid: [0, 0],
-		lastTransaction: 0,
+		lastTransaction: -1,
 		primary: null,
 		status: "free",
 		workToDo: false,
 		timeout: null,
 		servers: servers,
 		attempts: 0,
-		primaryProbes: 0
+		primaryProbes: 0,
+		log: [],
+		unackedTxns: new Map()
 	};
 };
 
@@ -147,7 +149,7 @@ var isInView = function(server, peer) {
 
 var sendHeartbeats = function(server) {
 	server.outHeartbeats.forEach(function(heartbeatTime, peer) {
-		if (heartbeatTime <= $.now() + MAX_LATENCY + 2000) {
+		if (heartbeatTime <= $.now() + MAX_LATENCY + 3000) {
 			sendMessage(server.mymid, peer, "HEART", "");
 			server.outHeartbeats.set(peer, heartbeatTime + HEARTBEAT_TIMEOUT);
 		}
