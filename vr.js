@@ -27,14 +27,12 @@ var sendMessage = function(src, dst, type, content) {
 	if (type !== "HEART")
 		console.log(src + " -> " + dst, type, content);
 
-	// var contentCopy = Object.assign({}, content);
 	var contentCopy = JSON.parse(JSON.stringify(content));
 	var m = new Message(src, dst, type, contentCopy);
 	var rando = MIN_LATENCY + Math.random()*(MAX_LATENCY - MIN_LATENCY);
-	// console.log(rando, Math.random() * (MAX_LATENCY - MIN_LATENCY));
+
 	m.deliverTime = $.now() + rando;
-	// console.log(rando, m.deliverTime);
-	// if (src !== 4 && dst !== 4)
+
 	window.animateMessage(m);
 	pendingMessages.push(m);
 };
@@ -425,8 +423,14 @@ var handleBegin = function(server) {
 		if (m.type != "BEGIN")
 			return true;
 
+
+		if (viewIdCompare(m.content.viewid, server.cur_viewid) != 0) {
+			sendMessage(server.mymid, m.src, "UPDATE-VIEW", { viewid: server.cur_viewid, aid : m.content.aid});
+			return false;
+		}
+
 		var viewstamp = addToBuffer(server, 'completed-call', m.content.aid);
-		sendMessage(server.mymid, m.src, "BEGIN-ACK", {pset: viewstamp});
+		sendMessage(server.mymid, m.src, "BEGIN-ACK", {pset: viewstamp, aid : m.content.aid});
 		return false;
 	});
 };
@@ -460,7 +464,7 @@ var handlePrepare = function(server) {
 
 				var result = peer.history.find(function(viewstamp){
 					if (viewIdCompare(pset.viewid, viewstamp.viewid) === 0) {
-						if (pset.ts == viewstamp.ts)
+						if (pset.ts <= viewstamp.ts)
 							return true;
 					}
 					return false;

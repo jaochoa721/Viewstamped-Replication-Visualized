@@ -263,7 +263,7 @@ var abortTransaction = function(client) {
 var beginTransaction = function(client) {
 	client.lastTransaction += 1;
 	var primary = client.primary;
-	sendMessage(client.mymid, primary, "BEGIN", { aid: client.lastTransaction });
+	sendMessage(client.mymid, primary, "BEGIN", { aid: client.lastTransaction, viewid: client.viewid });
 	client.status = "wait-ack";
 	client.timeout = $.now() + 2.5*MAX_LATENCY;
 	client.attempts = 0;
@@ -297,16 +297,31 @@ var commitTransaction = function(client) {
 
 var awaitAck = function(client) {
 	var ackDelivered = false;
+	var updateView = false;
 	client.messages = client.messages.filter(function(m) {
-		if (m.type != "BEGIN-ACK")
+		if (m.type != "BEGIN-ACK" && m.type != "UPDATE-VIEW")
 			return true;
 		// Confirm that txn is for you?
+		if (m.content.aid !== client.lastTransaction) {
+			return false;
+		}
+		if (m.type == "UPDATE-VIEW") {
+			client.viewid = m.content.viewid;
+			client.status = "free";
+			updateView = true;
+			return false;
+		}
+
 		ackDelivered = true;
 		client.viewstamp = m.content.pset;
 		client.status = "ready";
 		$('#transact_button').prop("disabled", false).text("Commit TXN");
 		return false;
 	});
+
+	if (updateView)
+		return 0;
+
 	if (!ackDelivered && client.timeout < $.now())
 		return -1;
 	return 0;
@@ -318,6 +333,9 @@ var awaitPrepare = function(client) {
 		if (m.type != "PREPARED" && m.type != "REFUSE")
 			return true;
 		// Confirm that txn is for you?
+		if (m.content.aid !== client.lastTransaction) {
+			return false;
+		}
 		if (m.type == "PREPARED") {
 			client.status = "commit-ready"
 		} else {

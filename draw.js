@@ -82,7 +82,7 @@ var drawServer = function(len, server) {
 
 	var body = "";
 	var bodyMap = {
-					0: "ID: " + server.mymid + ((server.mymid !== server.cur_view.primary) ? "" : " - Primary"),
+					0: "ID: " + server.mymid + ((server.mymid !== server.cur_view.primary || server.status !== "active") ? "" : " - Primary"),
 					1: "Status: " + server.status,  
 				   	2: "Cur View: (" + server.cur_viewid[0] + ", " + server.cur_viewid[1] + ")",
 				   	3: "Max View: (" + server.max_viewid[0] + ", " + server.max_viewid[1] + ")",
@@ -145,6 +145,7 @@ var drawClient = function(len, client) {
 					0: "Client - ID: " + client.mymid ,
 					1: "Status: " + client.status,  
 				   	2: "Last Txn: " + client.lastTransaction,
+				   	3: "Cur View: " + client.viewid,
 				};
 
 	// if (server.status == "active") {
